@@ -6,17 +6,7 @@
 // speeds. Purely a display effect — it never touches the sim (its own RNG, so
 // demo playback stays bit-identical).
 
-const NCOLS = 160;   // DOOM melts width/2 columns of a 320-wide screen
-const MELT_H = 200;  // DOOM screen height, the melt's vertical unit
-const TIC_MS = 1000 / 35;
-
-// A small self-contained PRNG so the melt's stagger never draws from the sim's
-// P_Random (which would desync demos).
-let seed = 0x1d872b41;
-const rnd = (): number => {
-  seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
-  return (seed >> 16) & 0xff;
-};
+import { createMeltColumns, NCOLS, WIPE_TIC_MS } from './wipe_melt.js';
 
 const SHADER = /* wgsl */ `
 struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
@@ -78,7 +68,7 @@ export function createWipe(device: GPUDevice, format: GPUTextureFormat): Wipe {
   const meltBuf = device.createBuffer({ size: NCOLS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   const flagBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const meltNorm = new Float32Array(NCOLS);
-  const meltY = new Int16Array(NCOLS);   // DOOM units, -16..MELT_H
+  const melt = createMeltColumns();
   const flagData = new Float32Array(1);
 
   let scene: GPUTexture | null = null;
@@ -113,40 +103,11 @@ export function createWipe(device: GPUDevice, format: GPUTextureFormat): Wipe {
     pending = false;
   }
 
-  // DOOM wipe_initMelt: column 0 gets a small random head start, each next column
-  // drifts by -1..+1 from the previous, clamped so the whole row starts near the
-  // top with a ragged edge.
-  function initMelt(): void {
-    meltY[0] = -(rnd() % 16);
-    for (let i = 1; i < NCOLS; i++) {
-      let y = meltY[i - 1] + ((rnd() % 3) - 1);
-      if (y > 0) y = 0;
-      else if (y === -16) y = -15;
-      meltY[i] = y;
-    }
-  }
-
-  // DOOM wipe_doMelt, one 35Hz tic: negative columns count up (their delay),
-  // then each column accelerates (dy ramps to 8) until it reaches the bottom.
-  function stepMelt(): boolean {
-    let done = true;
-    for (let i = 0; i < NCOLS; i++) {
-      if (meltY[i] < 0) { meltY[i]++; done = false; }
-      else if (meltY[i] < MELT_H) {
-        let dy = meltY[i] < 16 ? meltY[i] + 1 : 8;
-        if (meltY[i] + dy >= MELT_H) dy = MELT_H - meltY[i];
-        meltY[i] += dy;
-        done = false;
-      }
-    }
-    return done;
-  }
-
   return {
     melting: () => active,
     sceneView: () => scene!.createView(),
     resize,
-    request(): void { if (!active) { pending = true; initMelt(); } },
+    request(): void { if (!active) { pending = true; melt.init(); } },
     capture(enc: GPUCommandEncoder): void {
       if (!pending || !scene || !old) return;
       enc.copyTextureToTexture({ texture: scene }, { texture: old },
@@ -159,11 +120,8 @@ export function createWipe(device: GPUDevice, format: GPUTextureFormat): Wipe {
       if (active) {
         acc += Math.min(dtMs, 250);
         let done = false;
-        while (acc >= TIC_MS) { acc -= TIC_MS; if (stepMelt()) { done = true; break; } }
-        for (let i = 0; i < NCOLS; i++) {
-          const y = meltY[i] <= 0 ? 0 : meltY[i] / MELT_H;
-          meltNorm[i] = y > 1 ? 1 : y;
-        }
+        while (acc >= WIPE_TIC_MS) { acc -= WIPE_TIC_MS; if (melt.step()) { done = true; break; } }
+        melt.normalized(meltNorm);
         device.queue.writeBuffer(meltBuf, 0, meltNorm);
         if (done) active = false;
       }

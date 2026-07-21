@@ -25,18 +25,29 @@ const workletOpts = {
   logLevel: 'info',
 };
 
+// The alternative WebGL2 backend (index-webgl2.html). Shares every
+// backend-agnostic module; only src/webgl2/* differs from the WebGPU build.
+const webgl2Opts = {
+  entryPoints: ['src/webgl2/main-webgl2.ts'],
+  bundle: true,
+  format: 'esm',
+  target: 'es2022',
+  outfile: 'dist/doom-webgl2.js',
+  sourcemap: true,
+  logLevel: 'info',
+};
+
 const arg = process.argv[2];
 
 if (arg === '--watch') {
-  const ctx = await esbuild.context(opts);
-  const wctx = await esbuild.context(workletOpts);
-  await ctx.watch();
-  await wctx.watch();
+  for (const o of [opts, workletOpts, webgl2Opts]) await (await esbuild.context(o)).watch();
 } else if (arg === '--serve') {
   const ctx = await esbuild.context(opts);
   const wctx = await esbuild.context(workletOpts);
+  const g2ctx = await esbuild.context(webgl2Opts);
   await ctx.watch();
   await wctx.watch();
+  await g2ctx.watch();
 
   const { hosts, port } = await ctx.serve({ servedir: '.', host: '127.0.0.1', port: 8000 });
   // Proxy on 8080 that rewrites Host to something esbuild accepts
@@ -64,8 +75,9 @@ if (arg === '--watch') {
 } else {
   await esbuild.build({ ...opts, minify: true, sourcemap: false });
   await esbuild.build({ ...workletOpts, minify: true, sourcemap: false });
+  await esbuild.build({ ...webgl2Opts, minify: true, sourcemap: false });
   const kb = (n) => (n / 1024).toFixed(1).padStart(7) + ' KB';
-  for (const f of ['dist/doom.js', 'dist/music-worklet.js']) {
+  for (const f of ['dist/doom.js', 'dist/music-worklet.js', 'dist/doom-webgl2.js']) {
     const raw = readFileSync(f);
     const gz = gzipSync(raw, { level: 9 });
     console.log(`\n  ${f}\n  minified ${kb(raw.length)}\n  gzipped  ${kb(gz.length)}`);

@@ -2,6 +2,10 @@
 
 Written by Claude
 
+[Live](https://greggman.github.io/WebGPU-DOOM)
+
+[WebGL2 version]https://greggman.github.io/WebGPU-DOOM/index-webgl2.html) [See below](#webgl2)
+
 ## Why?
 
 I'm not sure this is true but in the age of AI code, lots of people
@@ -128,14 +132,33 @@ and use esbuild to build it.
      seam itself. It even claimed to have written a renderer at one point
      but claimed no seams.
 
-     Finally I told it to run the game in puppeteer and give me a readout
-     for player position and angle so I could tell it exactly where to be. I also told it to clear to magenta and stop drawing the sky so
-     the seam would be easy to spot. This took a few iterations as it
-     claimed it couldn't use puppeteer with WebGPU. So I hand made an
-     example. Once I got that working I pointed Claude at it and it was
-     able to make a repo and work through the seam issue.
+     Finally I told it to run the game in puppeteer and give me a readout for
+     player position and angle so I could tell it exactly where to be. I also
+     told it to clear to magenta and stop drawing the sky so the seam would be
+     easy to spot. This took a few iterations as it claimed it couldn't use
+     puppeteer with WebGPU. So I hand made an example. Once I got that working I
+     pointed Claude at it and it was able to make a repo and work through the
+     seam issue.
 
-(*) The comparison was at "initial commit" which was feature parity. Since then
-    many new features have been added.
+## WebGL2
+
+Why a WebGL2 version - Because WebGPU is still only around 70% coverage. But,
+the important part to take away I think is, when the WebGPU version was finished
+I asked Claude to port it to WebGL2. It was less than 15 minutes until it was
+rendering the world and the sky. Another 15 minutes to separate the WebGPU parts
+from main.ts into an API agnostic renderer.ts. A final 15 minutes to update the
+WebGL side to be fully working. The point again, being that AI can just do these
+things we used to use a library for.
+
+Interestingly, since we had already setup rendering via Puppeteer it used
+that to check things were working. Something it didn't do when building
+the original.
+
 
 # [LICENSE](LICENSE.md)
+
+## Footnotes:
+
+(*) The comparisons above were at "initial commit" which was feature parity.
+    Since then many new features have been added.
+

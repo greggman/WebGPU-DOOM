@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebGL2 Doom</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #screen { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script type="module">
+import Stats from './stats.module.js';
+window.Stats = Stats;
+</script>
+<script type="module" src="./dist/doom-webgl2.js"></script>
+</body>
+</html>

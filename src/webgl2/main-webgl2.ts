@@ -1,10 +1,9 @@
-// WebGPU entry point. Creates the WebGPU render backend and hands it to the
-// shared game loop (game.ts). The WebGL2 entry (webgl2/main-webgl2.ts) is the
-// same three lines with a different backend.
+// WebGL2 entry point. Identical to the WebGPU entry except for the backend it
+// hands the shared game loop.
 
-import { Wad } from './wad.js';
-import { runGame } from './game.js';
-import { createWebGPUBackend } from './webgpu/backend.js';
+import { Wad } from '../wad.js';
+import { runGame } from '../game.js';
+import { createWebGL2Backend } from './backend.js';
 
 const WAD_URL = './doom1.wad';
 
@@ -13,7 +12,7 @@ async function main(): Promise<void> {
   const res = await fetch(WAD_URL);
   if (!res.ok) throw new Error(`${WAD_URL}: ${res.status}`);
   const wad = new Wad(await res.arrayBuffer());
-  const renderer = await createWebGPUBackend(canvas, wad);
+  const renderer = createWebGL2Backend(canvas, wad);
   await runGame(canvas, wad, renderer);
 }
 

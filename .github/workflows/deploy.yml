@@ -1,0 +1,68 @@
+# Builds the site and publishes it to GitHub Pages. The published site is a
+# project page (served from https://<user>.github.io/<repo>/), i.e. a subfolder,
+# which is why every URL in the app is relative (./dist/…, ./doom1.wad, and the
+# worklet via import.meta.url) — it runs unchanged from any path.
+#
+# One-time repo setup: Settings → Pages → Build and deployment → Source =
+# "GitHub Actions".
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a newer run supersede an in-flight one, but don't cancel a run mid-deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # The DOOM submodule is only for the offline oracle/tools, not the web
+        # build, so we skip it (default) to keep checkout fast.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build   # minified bundles into dist/ (dist/ is gitignored)
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp index.html \
+             index-webgl2.html \
+             index-postprocess.html \
+             index-postprocess-webgl2.html \
+             stats.module.js \
+             doom1.wad \
+             _site/
+          cp -r dist _site/dist
+          touch _site/.nojekyll   # serve files as-is, no Jekyll processing
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

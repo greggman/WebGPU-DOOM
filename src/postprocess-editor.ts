@@ -209,8 +209,14 @@ export function wirePostProcessEditor(canvas: HTMLCanvasElement, pp: PostProcess
 
   saveBtn.addEventListener('click', async () => {
     if (!editor) return;
+    // The shader lives entirely in #post=; the ?pp= effect param is redundant
+    // (and stale — the running shader is "custom"), so drop it from the link.
+    const payload = 'post=' + await deflate(editor.getText());
+    const q = new URLSearchParams(location.search);
+    q.delete('pp');
+    const qs = q.toString();
+    history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + '#' + payload);
     try {
-      location.hash = 'post=' + await deflate(editor.getText());
       await navigator.clipboard.writeText(location.href);
       statusEl.textContent = 'URL copied to clipboard'; statusEl.style.color = '#8c8';
     } catch {

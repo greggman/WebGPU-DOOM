@@ -45,15 +45,21 @@ The scene colour is the sampler `iChannel0`; the normal/depth target is
 | `iColor0(uv)`             | `vec4`  | the rendered scene colour                  |
 | `texture2D(iChannel0, uv)`| `vec4`  | same thing, Shadertoy style                |
 | `iNormal0(uv)`            | `vec3`  | world-space geometric normal               |
-| `iDepth0(uv)`             | `float` | linear view depth, in map units            |
+| `iDepth0(uv)`             | `float` | **linear** view depth, in **map units**    |
+| `iDepth01(uv)`            | `float` | the same depth **normalized** to 0..1 (0 = eye, 1 = far clip) |
 
 Notes on the G-buffer:
 
 - **Normals** come from screen-space derivatives of world position, so floors and
   ceilings point roughly along ±Y and walls are horizontal. Sprites use a
   camera-facing normal. The sky and the HUD write a zero normal.
-- **Depth** is distance from the camera in map units (≈ 0 up close). The sky is
-  written as a far value (~20000); the HUD is written as 0 (nearest).
+- **Depth is linear.** `iDepth0` is the real distance from the eye in map units —
+  use it for anything range-based (DOF focus, fog), where a world distance is the
+  natural unit. `iDepth01` is that value divided by the far clip (`20000`) and
+  clamped, for when you just want a 0..1 number. Note the far clip is *far*, so
+  typical rooms sit in the low end of 0..1 (a linear grayscale of it looks flat;
+  the `depth` built-in applies a display gamma). The sky is written at the far clip
+  (~20000, → `iDepth01` ≈ 1); the HUD/weapon are written at 0 (nearest).
 
 ## Notes
 
@@ -73,12 +79,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 ```
 
-Show the depth buffer:
+Show depth (normalized):
 
 ```glsl
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-  vec2 uv = fragCoord / iResolution.xy;
-  float z = clamp(iDepth0(uv) / 1500.0, 0.0, 1.0);
+  float z = iDepth01(fragCoord / iResolution.xy);
   fragColor = vec4(vec3(1.0 - z), 1.0);   // near = white, far = black
 }
 ```

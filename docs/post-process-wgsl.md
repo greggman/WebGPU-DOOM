@@ -42,15 +42,21 @@ Sample these with a 0..1 UV:
 | ---------------- | ------- | ----------------------------------------------------- |
 | `iColor0(uv)`    | `vec4f` | the rendered scene colour (`iChannel0`)               |
 | `iNormal0(uv)`   | `vec3f` | world-space geometric normal                          |
-| `iDepth0(uv)`    | `f32`   | linear view depth, in map units                       |
+| `iDepth0(uv)`    | `f32`   | **linear** view depth, in **map units**               |
+| `iDepth01(uv)`   | `f32`   | the same depth **normalized** to 0..1 (0 = eye, 1 = far clip) |
 
 Notes on the G-buffer:
 
 - **Normals** come from screen-space derivatives of world position, so floors and
   ceilings point roughly along ±Y and walls are horizontal. Sprites use a
   camera-facing normal. The sky and the HUD write a zero normal.
-- **Depth** is distance from the camera in map units (≈ 0 up close). The sky is
-  written as a far value (~20000); the HUD is written as 0 (nearest).
+- **Depth is linear.** `iDepth0` is the real distance from the eye in map units —
+  use it for anything range-based (DOF focus, fog), where a world distance is the
+  natural unit. `iDepth01` is that value divided by the far clip (`20000`) and
+  clamped, for when you just want a 0..1 number. Note the far clip is *far*, so
+  typical rooms sit in the low end of 0..1 (a linear grayscale of it looks flat;
+  the `depth` built-in applies a display gamma). The sky is written at the far clip
+  (~20000, → `iDepth01` ≈ 1); the HUD/weapon are written at 0 (nearest).
 
 ## Helpers
 
@@ -73,12 +79,11 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
 }
 ```
 
-Show the depth buffer:
+Show depth (normalized):
 
 ```wgsl
 fn mainImage(fragCoord: vec2f) -> vec4f {
-  let uv = fragCoord / U.iResolution.xy;
-  let z = clamp(iDepth0(uv) / 1500.0, 0.0, 1.0);
+  let z = iDepth01(fragCoord / U.iResolution.xy);
   return vec4f(vec3f(1.0 - z), 1.0);   // near = white, far = black
 }
 ```

@@ -30,13 +30,15 @@ export const showNormals: PostEffect = {
 export const showDepth: PostEffect = {
   name: 'depth',
   author: 'Claude',
+  // iDepth01 is normalised 0..1 (0 = eye, 1 = far clip). The far clip is distant
+  // relative to typical rooms, so a display gamma (0.25, presentation only)
+  // spreads the near field for a readable debug view.
   wgsl: `fn mainImage(fragCoord: vec2f) -> vec4f {
-    let uv = fragCoord / U.iResolution.xy;
-    let z = clamp(iDepth0(uv) / 1500.0, 0.0, 1.0);
+    let z = pow(iDepth01(fragCoord / U.iResolution.xy), 0.25);
     return vec4f(vec3f(1.0 - z), 1.0); // near = white, far = black
   }`,
   glsl: `void mainImage(out vec4 c, in vec2 fc) {
-    float z = clamp(iDepth0(fc / iResolution.xy) / 1500.0, 0.0, 1.0);
+    float z = pow(iDepth01(fc / iResolution.xy), 0.25);
     c = vec4(vec3(1.0 - z), 1.0);
   }`,
 };

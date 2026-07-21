@@ -27,7 +27,8 @@ uniform sampler2D iChannelND;   // normal.xyz + linear depth.w
 out vec4 _outColor;
 vec4 iColor0(vec2 uv){ return texture(iChannel0, uv); }        // == texture2D(iChannel0, uv)
 vec3 iNormal0(vec2 uv){ return texture(iChannelND, uv).xyz; }
-float iDepth0(vec2 uv){ return texture(iChannelND, uv).w; }
+float iDepth0(vec2 uv){ return texture(iChannelND, uv).w; }    // map units
+float iDepth01(vec2 uv){ return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }   // 0 = eye, 1 = far clip
 `;
 
 const FS_FOOTER = `

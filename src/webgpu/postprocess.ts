@@ -21,7 +21,8 @@ struct Uniforms { iResolution: vec3f, iTime: f32, iMouse: vec4f, iFrame: f32 };
 
 fn iColor0(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel0, iSampler, uv, 0.0); }
 fn iNormal0(uv: vec2f) -> vec3f { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz; }
-fn iDepth0(uv: vec2f) -> f32 { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).w; }
+fn iDepth0(uv: vec2f) -> f32 { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).w; }   // map units
+fn iDepth01(uv: vec2f) -> f32 { return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }                 // 0 = eye, 1 = far clip
 fn fmod(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
 fn fmod2(x: vec2f, y: vec2f) -> vec2f { return x - y * floor(x / y); }
 

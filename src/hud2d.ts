@@ -15,7 +15,7 @@ export const VIRT_H = 200;
 // drawn in several passes per frame (weapon, status bar, menu) that share one
 // instance buffer, and a shared uniform would be clobbered by the last write.
 // Baking the tint into each quad lets every draw own its own region.
-const SHADER = /* wgsl */ `
+const shader = (gb: boolean): string => /* wgsl */ `
 @group(0) @binding(0) var palette : texture_2d<f32>;
 @group(0) @binding(1) var atlas   : texture_2d_array<u32>;
 @group(0) @binding(2) var<storage, read> sizes : array<vec2f>;
@@ -48,14 +48,16 @@ fn vs(@builtin(vertex_index) vi : u32, in : Inst) -> VsOut {
   return out;
 }
 
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
+
 @fragment
-fn fs(in : VsOut) -> @location(0) vec4f {
+fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   let size = sizes[in.layer];
   let texel = vec2i(in.uv * size);
   let idx = textureLoad(atlas, texel, in.layer, 0);
   if (idx.g == 0u) { discard; }   // patch transparency
   let rgb = textureLoad(palette, vec2i(i32(idx.r), i32(in.palRow)), 0).rgb;
-  return vec4f(rgb, 1.0);
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 0.0); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -81,6 +83,7 @@ export function createHud2D(
   paletteView: GPUTextureView,
   wad: Wad,
   lumpNames: string[],
+  gbufferFormat?: GPUTextureFormat,
 ): Hud2D {
   // Decode every UI patch into one texture array, padded to the largest.
   const patches = lumpNames
@@ -121,7 +124,7 @@ export function createHud2D(
   });
   device.queue.writeBuffer(sizes, 0, sizeData);
 
-  const module = device.createShaderModule({ label: 'hud2d', code: SHADER });
+  const module = device.createShaderModule({ label: 'hud2d', code: shader(!!gbufferFormat) });
   const layout = device.createBindGroupLayout({
     entries: [
       { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
@@ -145,7 +148,10 @@ export function createHud2D(
         ],
       }],
     },
-    fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+    fragment: {
+      module, entryPoint: 'fs',
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }] : [{ format }],
+    },
     primitive: { topology: 'triangle-list' },
     // The HUD shares the world's render pass, which has a depth attachment — so
     // this pipeline must declare a matching depth-stencil state even though it

@@ -15,7 +15,7 @@
 // Vanilla has no freelook, so the vertical mapping below is an extension. It's
 // built to agree with vanilla at pitch 0 (horizon lands on row 100).
 
-const SHADER = /* wgsl */ `
+const shader = (gb: boolean): string => /* wgsl */ `
 struct SkyGlobals {
   right   : vec3f,
   tanHalf : f32,
@@ -49,8 +49,10 @@ fn vs(@builtin(vertex_index) i : u32) -> VsOut {
 
 const PI = 3.14159265359;
 
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
+
 @fragment
-fn fs(in : VsOut) -> @location(0) vec4f {
+fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   // Ray direction straight from the camera basis -- cheaper than inverting the
   // view-projection, and there's only one camera to care about.
   let dir = normalize(
@@ -74,7 +76,7 @@ fn fs(in : VsOut) -> @location(0) vec4f {
 
   // Full bright: no COLORMAP lookup at all, matching r_plane.c.
   let rgb = textureLoad(palette, vec2i(i32(idx.r), 0), 0).rgb;
-  return vec4f(rgb, 1.0);
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 20000.0); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -86,8 +88,8 @@ export interface SkyPass {
   globals: GPUBuffer;
 }
 
-export function createSkyPass(device: GPUDevice, format: GPUTextureFormat): SkyPass {
-  const module = device.createShaderModule({ label: 'doom-sky', code: SHADER });
+export function createSkyPass(device: GPUDevice, format: GPUTextureFormat, gbufferFormat?: GPUTextureFormat): SkyPass {
+  const module = device.createShaderModule({ label: 'doom-sky', code: shader(!!gbufferFormat) });
 
   const layout = device.createBindGroupLayout({
     entries: [
@@ -102,7 +104,10 @@ export function createSkyPass(device: GPUDevice, format: GPUTextureFormat): SkyP
     label: 'doom-sky',
     layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
     vertex: { module, entryPoint: 'vs' },
-    fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+    fragment: {
+      module, entryPoint: 'fs',
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }] : [{ format }],
+    },
     primitive: { topology: 'triangle-list' },
     // Depth test off, writes off: the sky lays down a background and level
     // geometry paints over it.

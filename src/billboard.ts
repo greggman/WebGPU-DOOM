@@ -10,7 +10,7 @@
 // the viewer but never tilt, which is what vanilla's column projection does
 // implicitly (it has no pitch at all).
 
-const SHADER = /* wgsl */ `
+const shader = (gb: boolean): string => /* wgsl */ `
 struct Globals {
   mvp        : mat4x4f,
   paletteRow : u32,
@@ -46,7 +46,10 @@ struct VsOut {
   @location(2) viewDepth  : f32,
   @location(3) @interpolate(flat) layer    : u32,
   @location(4) @interpolate(flat) shadow   : u32,   // MF_SHADOW: draw as fuzz
+  ${gb ? '@location(5) @interpolate(flat) normal : vec3f,' : ''}
 };
+
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
 
 @vertex
 fn vs(in : VsIn) -> VsOut {
@@ -97,11 +100,14 @@ fn vs(in : VsIn) -> VsOut {
   out.viewDepth = clip.w;
   out.layer = u32(in.layer);
   out.shadow = (flags >> 1u) & 1u;
+  // Billboard normal: horizontal, perpendicular to the sprite's world X axis
+  // (cam.right). A consistent facing so show-normals/outline treat sprites sanely.
+  ${gb ? 'out.normal = normalize(cross(cam.right, vec3f(0.0, 1.0, 0.0)));' : ''}
   return out;
 }
 
 @fragment
-fn fs(in : VsOut) -> @location(0) vec4f {
+fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   let size = texInfo[in.layer].xy;
   // Clamp rather than wrap: a sprite must not tile across its own quad.
   let texel = vec2i(clamp(in.uv * size, vec2f(0.0), size - vec2f(1.0)));
@@ -131,12 +137,12 @@ fn fs(in : VsOut) -> @location(0) vec4f {
     let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
     let p = vec2u(in.clip.xy);
     let shimmer = select(0.0, 0.18, ((p.x + p.y) & 1u) == 0u);
-    return vec4f(rgb, 0.34 + shimmer);
+    ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 0.34 + shimmer); o.nd = vec4f(in.normal, in.viewDepth); return o;' : 'return vec4f(rgb, 0.34 + shimmer);'}
   }
 
   let remap = textureLoad(colormap, vec2i(i32(idx.r), row), 0).r;
   let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
-  return vec4f(rgb, 1.0);
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(in.normal, in.viewDepth); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -148,8 +154,8 @@ export interface BillboardPass {
   camera: GPUBuffer;
 }
 
-export function createBillboardPass(device: GPUDevice, format: GPUTextureFormat): BillboardPass {
-  const module = device.createShaderModule({ label: 'doom-sprites', code: SHADER });
+export function createBillboardPass(device: GPUDevice, format: GPUTextureFormat, gbufferFormat?: GPUTextureFormat): BillboardPass {
+  const module = device.createShaderModule({ label: 'doom-sprites', code: shader(!!gbufferFormat) });
 
   const layout = device.createBindGroupLayout({
     entries: [
@@ -183,14 +189,23 @@ export function createBillboardPass(device: GPUDevice, format: GPUTextureFormat)
       module,
       entryPoint: 'fs',
       // Blend is enabled for the spectre fuzz (translucent). Opaque sprites
-      // output alpha 1.0, so src-alpha blending leaves them untouched.
-      targets: [{
-        format,
-        blend: {
-          color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-        },
-      }],
+      // output alpha 1.0, so src-alpha blending leaves them untouched. The
+      // normal/depth target (when present) is written straight, no blend.
+      targets: gbufferFormat
+        ? [
+            { format, blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            } },
+            { format: gbufferFormat },
+          ]
+        : [{
+            format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          }],
     },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
     // Depth-write on: the cut-out discards before the depth write, so masked

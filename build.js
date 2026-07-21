@@ -37,17 +37,30 @@ const webgl2Opts = {
   logLevel: 'info',
 };
 
+// WebGPU with the post-process G-buffer + filter (index-postprocess.html).
+const postprocessOpts = {
+  entryPoints: ['src/main-postprocess.ts'],
+  bundle: true,
+  format: 'esm',
+  target: 'es2022',
+  outfile: 'dist/doom-postprocess.js',
+  sourcemap: true,
+  logLevel: 'info',
+};
+
 const arg = process.argv[2];
 
 if (arg === '--watch') {
-  for (const o of [opts, workletOpts, webgl2Opts]) await (await esbuild.context(o)).watch();
+  for (const o of [opts, workletOpts, webgl2Opts, postprocessOpts]) await (await esbuild.context(o)).watch();
 } else if (arg === '--serve') {
   const ctx = await esbuild.context(opts);
   const wctx = await esbuild.context(workletOpts);
   const g2ctx = await esbuild.context(webgl2Opts);
+  const ppctx = await esbuild.context(postprocessOpts);
   await ctx.watch();
   await wctx.watch();
   await g2ctx.watch();
+  await ppctx.watch();
 
   const { hosts, port } = await ctx.serve({ servedir: '.', host: '127.0.0.1', port: 8000 });
   // Proxy on 8080 that rewrites Host to something esbuild accepts
@@ -76,8 +89,9 @@ if (arg === '--watch') {
   await esbuild.build({ ...opts, minify: true, sourcemap: false });
   await esbuild.build({ ...workletOpts, minify: true, sourcemap: false });
   await esbuild.build({ ...webgl2Opts, minify: true, sourcemap: false });
+  await esbuild.build({ ...postprocessOpts, minify: true, sourcemap: false });
   const kb = (n) => (n / 1024).toFixed(1).padStart(7) + ' KB';
-  for (const f of ['dist/doom.js', 'dist/music-worklet.js', 'dist/doom-webgl2.js']) {
+  for (const f of ['dist/doom.js', 'dist/music-worklet.js', 'dist/doom-webgl2.js', 'dist/doom-postprocess.js']) {
     const raw = readFileSync(f);
     const gz = gzipSync(raw, { level: 9 });
     console.log(`\n  ${f}\n  minified ${kb(raw.length)}\n  gzipped  ${kb(gz.length)}`);

@@ -11,7 +11,18 @@ import { createHud2D } from '../hud2d.js';
 import { createWipe } from '../wipe.js';
 import { createAutomap } from '../automap.js';
 import { createPaletteResources } from '../palette.js';
+import type { PostProcess } from './postprocess.js';
 import { buildTextureArray, type TextureArray } from '../textures.js';
+
+// Second render target for post-processing: geometric normal (xyz) + linear view
+// depth (w). Only allocated when a post-process factory is supplied, so the plain
+// build never pulls in postprocess.ts or the effect library.
+const GBUFFER_FORMAT: GPUTextureFormat = 'rgba16float';
+const GBUFFER_CLEAR = { r: 0, g: 0, b: 0, a: 20000 };
+
+/** Builds the post-process filter. Injected by main-postprocess.ts so the plain
+ *  entry (main.ts) tree-shakes the whole effect library out of its bundle. */
+export type PostProcessFactory = (device: GPUDevice, format: GPUTextureFormat) => PostProcess;
 import { spriteTextures } from '../things.js';
 import { initSpriteDefs } from '../sprites.js';
 import { statusBarLumps, weaponSpriteLumps, fontLumps } from '../st_stuff.js';
@@ -35,7 +46,11 @@ interface LevelGpu {
   spriteLayer: Map<string, number>;
 }
 
-export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): Promise<Renderer> {
+export async function createWebGPUBackend(
+  canvas: HTMLCanvasElement,
+  wad: Wad,
+  opts: { postProcessFactory?: PostProcessFactory } = {},
+): Promise<Renderer> {
   if (!navigator.gpu) throw new Error('WebGPU not available in this browser');
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error('no WebGPU adapter');
@@ -64,16 +79,21 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: 'opaque' });
 
+  // Post-process (index-postprocess.html): the scene renders into a G-buffer
+  // (colour + normal/depth) and a Shadertoy-style filter runs before the melt.
+  const gbf = opts.postProcessFactory ? GBUFFER_FORMAT : undefined;
+  const postprocess: PostProcess | null = opts.postProcessFactory ? opts.postProcessFactory(device, format) : null;
+
   const wipe = createWipe(device, format);
   const automapCtl = createAutomap(device, format);
   const { paletteTex, colormapTex } = createPaletteResources(device, wad);
-  const pass = createPass(device, format);
-  const skyPass = createSkyPass(device, format);
-  const spritePass = createBillboardPass(device, format);
+  const pass = createPass(device, format, gbf);
+  const skyPass = createSkyPass(device, format, gbf);
+  const spritePass = createBillboardPass(device, format, gbf);
   const spriteDefs = initSpriteDefs(wad);
   const sprTex = spriteTextures(wad, spriteDefs); // same for every level; decode once
   const hud = createHud2D(device, format, paletteTex.createView(), wad,
-    ['TITLEPIC', 'CREDIT', ...statusBarLumps(), ...weaponSpriteLumps(), ...menuLumps(), ...fontLumps(), ...wiLumps()]);
+    ['TITLEPIC', 'CREDIT', ...statusBarLumps(), ...weaponSpriteLumps(), ...menuLumps(), ...fontLumps(), ...wiLumps()], gbf);
 
   const MAX_SPRITES = 1024;
   const instanceBuf = device.createBuffer({
@@ -83,6 +103,8 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
   const camScratch = new Float32Array(4);
 
   let depth: GPUTexture | null = null;
+  let gColor: GPUTexture | null = null;   // post-process only
+  let gNd: GPUTexture | null = null;      // post-process only: normal.xyz, depth.w
   let width = 0, height = 0;
   let gpu: LevelGpu | null = null;
   let enc: GPUCommandEncoder | null = null;
@@ -95,6 +117,13 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
     depth?.destroy();
     depth = device.createTexture({ size: [width, height], format: 'depth24plus', usage: GPUTextureUsage.RENDER_ATTACHMENT });
     wipe.resize(width, height);
+    if (postprocess) {
+      gColor?.destroy(); gNd?.destroy();
+      const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
+      gColor = device.createTexture({ size: [width, height], format, usage });
+      gNd = device.createTexture({ size: [width, height], format: GBUFFER_FORMAT, usage });
+      postprocess.setInputs(gColor.createView(), gNd.createView());
+    }
   }
 
   function setLevel(geo: LevelGeometry, sectorCount: number): void {
@@ -180,6 +209,7 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
     get width() { return width; },
     get height() { return height; },
     automap,
+    postProcess: postprocess ?? undefined,
     spriteLayerOf: (name) => gpu?.spriteLayer.get(name),
     resize,
     setLevel,
@@ -189,12 +219,18 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
     beginFrame(clearMagenta) {
       enc = device.createCommandEncoder();
       wipe.capture(enc);
+      const clearValue = clearMagenta ? { r: 1, g: 0, b: 1, a: 1 } : { r: 0, g: 0, b: 0, a: 1 };
+      // Post-process renders the scene into the G-buffer (colour + normal/depth);
+      // the filter later resolves it into the melt's scene target. Otherwise the
+      // scene renders straight into the melt target as before.
+      const colorAttachments: GPURenderPassColorAttachment[] = postprocess
+        ? [
+            { view: gColor!.createView(), clearValue, loadOp: 'clear', storeOp: 'store' },
+            { view: gNd!.createView(), clearValue: GBUFFER_CLEAR, loadOp: 'clear', storeOp: 'store' },
+          ]
+        : [{ view: wipe.sceneView(), clearValue, loadOp: 'clear', storeOp: 'store' }];
       rp = enc.beginRenderPass({
-        colorAttachments: [{
-          view: wipe.sceneView(),
-          clearValue: clearMagenta ? { r: 1, g: 0, b: 1, a: 1 } : { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: 'clear', storeOp: 'store',
-        }],
+        colorAttachments,
         depthStencilAttachment: { view: depth!.createView(), depthClearValue: 1.0, depthLoadOp: 'clear', depthStoreOp: 'store' },
       });
     },
@@ -222,6 +258,9 @@ export async function createWebGPUBackend(canvas: HTMLCanvasElement, wad: Wad): 
     drawHud: (quads, paletteRow) => hud.draw(rp!, quads, paletteRow),
     present(dtMs) {
       rp!.end();
+      // Post-process resolves the G-buffer into the melt's scene target; the melt
+      // then blits/melts that to the swapchain exactly as in the plain path.
+      if (postprocess) postprocess.render(enc!, wipe.sceneView(), width, height, dtMs);
       wipe.present(enc!, context.getCurrentTexture().createView(), dtMs);
       device.queue.submit([enc!.finish()]);
       rp = null; enc = null;

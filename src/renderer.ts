@@ -17,6 +17,26 @@ import type { PLine, PMobj } from './p_local.js';
  *  billboard shaders, so the game builds the array once. */
 export const SPRITE_FLOATS = 6;
 
+/** Attribution shown in the post-process toolbar. */
+export interface PostEffectInfo {
+  name: string;
+  author?: string;
+  authorUrl?: string;
+  src?: string;
+  license?: string;
+  licenseUrl?: string;
+}
+
+/** Runtime control of the post-process filter (index-postprocess.html). Present
+ *  only on a post-process-enabled backend; undefined otherwise. */
+export interface PostProcessControl {
+  readonly effects: PostEffectInfo[];
+  current(): string;
+  setEffect(name: string): void;
+  /** Cursor for iMouse (device px, button state). */
+  setMouse(x: number, y: number, down: boolean): void;
+}
+
 /** The overhead automap. State/logic is trivial; prepare/draw touch the GPU. */
 export interface AutomapControl {
   readonly active: boolean;
@@ -33,6 +53,8 @@ export interface Renderer {
   readonly width: number;
   readonly height: number;
   readonly automap: AutomapControl;
+  /** Post-process filter control, when the backend was built with it enabled. */
+  readonly postProcess?: PostProcessControl;
 
   /** Atlas layer for a sprite lump name, or undefined if absent. */
   spriteLayerOf(name: string): number | undefined;

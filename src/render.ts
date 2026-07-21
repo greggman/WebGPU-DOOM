@@ -7,7 +7,7 @@
 // per-material state, no sorting, no bind group churn. One pipeline, one bind
 // group, one draw for the whole level.
 
-const SHADER = /* wgsl */ `
+const shader = (gb: boolean): string => /* wgsl */ `
 struct Globals {
   mvp        : mat4x4f,
   paletteRow : u32,   // PLAYPAL index: damage/pickup/radsuit (vanilla swaps the palette outright)
@@ -44,7 +44,10 @@ struct VsOut {
   @location(1) @interpolate(flat) sector : u32,
   @location(2) viewDepth  : f32,
   @location(3) @interpolate(flat) layer    : u32,
+  ${gb ? '@location(4) worldPos : vec3f,' : ''}
 };
+
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
 
 @vertex
 fn vs(in : VsIn) -> VsOut {
@@ -55,11 +58,16 @@ fn vs(in : VsIn) -> VsOut {
   out.sector = u32(in.sector);
   out.viewDepth = clip.w;   // perspective w == view-space depth
   out.layer = u32(in.layer);
+  ${gb ? 'out.worldPos = in.pos;' : ''}
   return out;
 }
 
 @fragment
-fn fs(in : VsOut) -> @location(0) vec4f {
+fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
+  // Geometric normal from screen-space derivatives of world position — free, and
+  // correct for walls and floors alike. Computed before any discard so it stays
+  // in uniform control flow.
+  ${gb ? 'let normal = normalize(cross(dpdx(in.worldPos), dpdy(in.worldPos)));' : ''}
   // Wrap against the layer's REAL size, not the padded array size. Manual wrap
   // is not a workaround here -- an indexed texture can never be filtered or
   // hardware-wrapped, because the average of palette index 3 and index 200 is
@@ -87,7 +95,7 @@ fn fs(in : VsOut) -> @location(0) vec4f {
 
   let remap = textureLoad(colormap, vec2i(i32(idx.r), row), 0).r;
   let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
-  return vec4f(rgb, 1.0);
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(normal, in.viewDepth); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -100,8 +108,8 @@ export interface Pass {
   globals: GPUBuffer;
 }
 
-export function createPass(device: GPUDevice, format: GPUTextureFormat): Pass {
-  const module = device.createShaderModule({ label: 'doom-indexed', code: SHADER });
+export function createPass(device: GPUDevice, format: GPUTextureFormat, gbufferFormat?: GPUTextureFormat): Pass {
+  const module = device.createShaderModule({ label: 'doom-indexed', code: shader(!!gbufferFormat) });
 
   const layout = device.createBindGroupLayout({
     entries: [
@@ -131,7 +139,10 @@ export function createPass(device: GPUDevice, format: GPUTextureFormat): Pass {
         ],
       }],
     },
-    fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+    fragment: {
+      module, entryPoint: 'fs',
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }] : [{ format }],
+    },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },
   });

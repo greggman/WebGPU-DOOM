@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebGPU Doom — Post Processing</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  #toolbar {
+    flex: 0 0 auto; width: 100%; box-sizing: border-box;
+    display: flex; gap: 1.5em; align-items: center;
+    font: 13px/1.4 monospace; background: #000; color: #fff; padding: 6px 12px;
+  }
+  #toolbar select {
+    font: inherit; color: #fff; background: #333; border: 0; padding: 4px 6px; border-radius: 3px;
+  }
+  #toolbar a { color: #08f; text-decoration: none; }
+  #toolbar a:hover { text-decoration: underline; }
+  #toolbar .sep { opacity: 0.5; }
+  #screen { flex: 1 1 auto; display: block; width: 100%; min-height: 0; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <span>filter: <select id="pp"></select></span>
+  <span class="sep">|</span>
+  <span><a id="src" href="" target="_blank" rel="noopener">src</a></span>
+  <span>author: <a id="author" href="" target="_blank" rel="noopener"></a></span>
+  <span>license: <a id="license" href="" target="_blank" rel="noopener"></a></span>
+</div>
+<canvas id="screen" tabindex="0"></canvas>
+<script type="module">
+// Stub out Stats for the postprocess page
+window.Stats = class Stats {
+  constructor() { this.dom = document.createElement('div'); }
+  begin() {}
+  end() { return 0; }
+  showPanel() {}
+};
+</script>
+<script type="module" src="./dist/doom-postprocess.js"></script>
+</body>
+</html>

@@ -25,6 +25,7 @@ import { P_CheckSight } from './p_sight.js';
 import { trace } from './p_maputl.js';
 import { MF, MT, S, mobjInfo } from './info.js';
 import { P_Random } from './m_random.js';
+import { S_StartSound } from './s_sound.js';
 
 /** p_local.h. */
 const MELEERANGE = 64 * FRACUNIT;
@@ -743,8 +744,9 @@ function PTR_UseTraverse(inter: Intercept): boolean {
 
   if (!li.special) {
     const open = P_LineOpening(li);
-    // Solid: the "oof" wall. Stop the ray.
-    if (open.range <= 0) return false;
+    // Solid, no special: the player grunts (can't use through a wall) and the
+    // ray stops. p_map.c PTR_UseTraverse: S_StartSound(usething, sfx_noway).
+    if (open.range <= 0) { S_StartSound(useThing, 'sfx_noway'); return false; }
     return true; // see through it and keep looking
   }
 

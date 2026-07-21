@@ -105,6 +105,9 @@ export function P_SetPsprite(player: PPlayer, position: number, stnum: number): 
 export function P_BringUpWeapon(player: PPlayer): void {
   if (player.pendingWeapon === WP_NOCHANGE) player.pendingWeapon = player.readyWeapon;
 
+  // Raising the chainsaw plays its startup rev. p_pspr.c P_BringUpWeapon.
+  if (player.pendingWeapon === WP.wp_chainsaw) S_StartSound(player.mo!, 'sfx_sawup');
+
   const newState = weaponInfo[player.pendingWeapon].upState;
   player.pendingWeapon = WP_NOCHANGE;
   // Start from the bottom of the screen and rise.
@@ -172,6 +175,11 @@ export function A_WeaponReady(player: PPlayer, psp: PSprite): void {
 
   if (mo.state === S.S_PLAY_ATK1 || mo.state === S.S_PLAY_ATK2) {
     P_SetMobjState(mo, S.S_PLAY);
+  }
+
+  // The chainsaw hums while it sits idle and ready. p_pspr.c A_WeaponReady.
+  if (player.readyWeapon === WP.wp_chainsaw && psp.state === S.S_SAW) {
+    S_StartSound(mo, 'sfx_sawidl');
   }
 
   // A pending switch, or death, lowers the weapon.

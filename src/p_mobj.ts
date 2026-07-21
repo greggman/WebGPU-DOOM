@@ -254,8 +254,10 @@ export function P_ZMovement(mo: PMobj): void {
   if (mo.z <= mo.floorZ) {
     if (mo.momz < 0) {
       if (mo.player && mo.momz < -GRAVITY * 8) {
-        // Hard landing: the view dips proportionally to impact speed.
+        // Hard landing: the view dips proportionally to impact speed and the
+        // player grunts. p_mobj.c P_ZMovement.
         mo.player.deltaViewHeight = mo.momz >> 3;
+        S_StartSound(mo, 'sfx_oof');
       }
       mo.momz = 0;
     }

@@ -8,7 +8,7 @@
 import { FRACUNIT } from './m_fixed.js';
 import { P_AddThinker, P_RemoveThinker, type Thinker } from './p_tick.js';
 import { T_MovePlane, MoveResult, CEILING } from './p_floor.js';
-import { S_StartSoundAt } from './s_sound.js';
+import { S_StartSound, S_StartSoundAt } from './s_sound.js';
 import type { PLine, PMobj, PSector } from './p_local.js';
 
 /** Play a door's open/close sound at its sector centre. */
@@ -174,9 +174,6 @@ function newDoor(sector: PSector, type: DoorType): VLDoor {
 /**
  * EV_VerticalDoor: a door opened by USING it (no tag). The door sector is the
  * one on the BACK of the line — you always stand on the front.
- *
- * Key checks (blue/yellow/red) are omitted until the player has an inventory;
- * locked doors currently open for anyone.
  */
 export function EV_VerticalDoor(line: PLine, thing: PMobj): void {
   // side ^ 1: the sector behind the line is the door.
@@ -184,6 +181,25 @@ export function EV_VerticalDoor(line: PLine, thing: PMobj): void {
   if (backSideNum < 0) return; // one-sided: not a door
   const sec = line.backSector;
   if (!sec) return;
+
+  // Locked doors need the matching card or skull key; without it the player
+  // grunts and is told which key. p_doors.c EV_VerticalDoor. cards[]: 0/1/2 =
+  // blue/yellow/red card, 3/4/5 = blue/yellow/red skull.
+  const p = thing.player;
+  switch (line.special) {
+    case 26: case 32: // blue
+      if (!p) return;
+      if (!p.cards[0] && !p.cards[3]) { p.message = 'YOU NEED A BLUE KEY TO OPEN THIS DOOR'; S_StartSound(thing, 'sfx_oof'); return; }
+      break;
+    case 27: case 34: // yellow
+      if (!p) return;
+      if (!p.cards[1] && !p.cards[4]) { p.message = 'YOU NEED A YELLOW KEY TO OPEN THIS DOOR'; S_StartSound(thing, 'sfx_oof'); return; }
+      break;
+    case 28: case 33: // red
+      if (!p) return;
+      if (!p.cards[2] && !p.cards[5]) { p.message = 'YOU NEED A RED KEY TO OPEN THIS DOOR'; S_StartSound(thing, 'sfx_oof'); return; }
+      break;
+  }
 
   // Already moving? Re-using it reverses or re-triggers, depending on type.
   if (sec.specialData) {

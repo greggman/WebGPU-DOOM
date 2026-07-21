@@ -375,7 +375,15 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
     revealMap: () => renderer.automap.cheatCycle(),
   };
 
+  // Keys typed into a text field — the post-process shader editor's CodeMirror
+  // (a contenteditable) or its textarea fallback — must not drive the game.
+  const fromTextField = (e: KeyboardEvent): boolean => {
+    const t = e.target as HTMLElement | null;
+    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  };
+
   addEventListener('keydown', (e) => {
+    if (fromTextField(e)) return;
     audio.unlock(); // browsers only allow audio to start from a user gesture
     // Backtick toggles the console; while open it captures all typing.
     if (e.code === 'Backquote') { consoleOpen = !consoleOpen; consoleText = ''; e.preventDefault(); return; }

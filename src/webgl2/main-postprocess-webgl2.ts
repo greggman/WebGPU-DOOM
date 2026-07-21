@@ -6,6 +6,7 @@ import { runGame } from '../game.js';
 import { createWebGL2Backend } from './backend.js';
 import { createWebGL2PostProcess } from './postprocess.js';
 import { wirePostProcessToolbar } from '../postprocess-toolbar.js';
+import { wirePostProcessEditor } from '../postprocess-editor.js';
 
 const WAD_URL = './doom1.wad';
 
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const wad = new Wad(await res.arrayBuffer());
   const renderer = createWebGL2Backend(canvas, wad, { postProcessFactory: createWebGL2PostProcess });
   wirePostProcessToolbar(canvas, renderer.postProcess!);
+  wirePostProcessEditor(canvas, renderer.postProcess!);
   await runGame(canvas, wad, renderer);
 }
 

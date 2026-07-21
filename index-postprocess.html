@@ -12,13 +12,39 @@
     display: flex; gap: 1.5em; align-items: center;
     font: 13px/1.4 monospace; background: #000; color: #fff; padding: 6px 12px;
   }
-  #toolbar select {
-    font: inherit; color: #fff; background: #333; border: 0; padding: 4px 6px; border-radius: 3px;
+  #toolbar select, #toolbar button {
+    font: inherit; color: #fff; background: #333; border: 0; padding: 4px 8px; border-radius: 3px; cursor: pointer;
   }
   #toolbar a { color: #08f; text-decoration: none; }
   #toolbar a:hover { text-decoration: underline; }
   #toolbar .sep { opacity: 0.5; }
-  #screen { flex: 1 1 auto; display: block; width: 100%; min-height: 0; }
+  #toolbar .spacer { flex: 1; }
+  #toolbar #help {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; border-radius: 50%;
+    background: #333; color: #fff; font-weight: bold; text-decoration: none;
+  }
+  #toolbar #help:hover { background: #08f; text-decoration: none; }
+
+  #stage { flex: 1 1 auto; display: flex; min-height: 0; }
+  #screen { flex: 1 1 0; display: block; min-width: 0; min-height: 0; }
+  body.editing #screen { flex-grow: 0; flex-shrink: 0; }   /* basis set by the divider */
+
+  #splitter { display: none; flex: 0 0 6px; background: #333; cursor: col-resize; }
+  #splitter:hover { background: #08f; }
+  body.editing #splitter { display: block; }
+
+  #editor { display: none; flex-direction: column; min-width: 0; background: #1e1e1e; }
+  body.editing #editor { display: flex; flex: 1 1 0; }
+  #editor-bar { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #111; color: #ccc; font: 12px monospace; }
+  #editor-bar button { font: inherit; background: #333; color: #fff; border: 0; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+  #editor-status { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #editor-host { flex: 1 1 0; min-height: 0; overflow: hidden; }
+  #editor-errors {
+    flex: 0 0 auto; max-height: 40%; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    background: #2a1515; color: #f88; padding: 6px 8px; font: 11px/1.4 monospace; border-top: 1px solid #533;
+  }
 </style>
 </head>
 <body>
@@ -28,8 +54,22 @@
   <span><a id="src" href="" target="_blank" rel="noopener">src</a></span>
   <span>author: <a id="author" href="" target="_blank" rel="noopener"></a></span>
   <span>license: <a id="license" href="" target="_blank" rel="noopener"></a></span>
+  <span class="spacer"></span>
+  <a id="help" href="https://github.com/greggman/WebGPU-DOOM/blob/main/docs/post-process-wgsl.md" target="_blank" rel="noopener" title="Shader inputs &amp; docs">?</a>
+  <button id="editbtn">edit</button>
 </div>
-<canvas id="screen" tabindex="0"></canvas>
+<div id="stage">
+  <canvas id="screen" tabindex="0"></canvas>
+  <div id="splitter"></div>
+  <div id="editor">
+    <div id="editor-bar">
+      <button id="savebtn">save &amp; copy URL</button>
+      <span id="editor-status"></span>
+    </div>
+    <div id="editor-host"></div>
+    <div id="editor-errors" hidden></div>
+  </div>
+</div>
 <script type="module">
 // Stub out Stats for the postprocess page
 window.Stats = class Stats {

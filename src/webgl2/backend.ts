@@ -173,6 +173,10 @@ export function createWebGL2Backend(
   if (gb && !gl.getExtension('EXT_color_buffer_float')) {
     console.warn('EXT_color_buffer_float unavailable — post-process G-buffer may fail');
   }
+  // Per-draw-buffer blend control. WebGL2's global BLEND enable would blend the
+  // sprite pass's normal/depth MRT target too (depth is that target's .a, so
+  // SRC_ALPHA blending corrupts it); this lets us blend only the colour target.
+  const drawBuffersIndexed = gb ? gl.getExtension('OES_draw_buffers_indexed') : null;
 
   // Every atlas is tightly packed with no per-row padding. The default
   // UNPACK_ALIGNMENT of 4 would corrupt any RG8UI patch of odd width (row =
@@ -397,7 +401,19 @@ export function createWebGL2Backend(
       gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 24, 16);
       gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 24, 20);
       gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
-      gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      if (drawBuffersIndexed) {
+        // Blend the colour target (0) for spectre-fuzz translucency; leave the
+        // normal/depth target (1) unblended so its depth stays intact.
+        drawBuffersIndexed.enableiOES(gl.BLEND, 0);
+        drawBuffersIndexed.disableiOES(gl.BLEND, 1);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      } else if (gb) {
+        // No per-buffer blend: keep depth/normal correct by drawing opaque (fuzz
+        // sprites lose translucency).
+        gl.disable(gl.BLEND);
+      } else {
+        gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      }
       gl.useProgram(spriteProg);
       gl.uniformMatrix4fv(U(spriteProg, 'u_mvp'), false, lastMvp);
       gl.uniform3fv(U(spriteProg, 'u_camRight'), cameraRight);

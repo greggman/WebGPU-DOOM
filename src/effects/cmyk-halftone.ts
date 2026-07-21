@@ -23,7 +23,7 @@ fn halftone(fc: vec2f, m: mat2x2f, S: f32) -> vec4f {
   let ORIGIN = 0.5 * U.iResolution.xy;
   let smp = (grid(m * fc, S) + 0.5*S) * m;
   let s = min(length(fc - smp) / (1.48 * 0.5 * S), 1.0);  // DOTSIZE 1.48
-  var texc = texture0((smp + ORIGIN) / U.iResolution.xy).rgb;
+  var texc = iColor0((smp + ORIGIN) / U.iResolution.xy).rgb;
   texc = pow(texc, vec3f(2.2));                            // gamma decode
   return rgb2cmyki(texc) + s;
 }

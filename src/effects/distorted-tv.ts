@@ -58,9 +58,9 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
     staticVal = staticVal + staticV(vec2f(uv.x, uv.y + dist)) * (maxDist - abs(dist)) * 1.5;
   }
   staticVal = staticVal * bottomStaticOpt;
-  let red   = texture0(vec2f(uv.x + xOffset - 0.01*rgbOffsetOpt, y)).r + staticVal;
-  let green = texture0(vec2f(uv.x + xOffset, y)).g + staticVal;
-  let blue  = texture0(vec2f(uv.x + xOffset + 0.01*rgbOffsetOpt, y)).b + staticVal;
+  let red   = iColor0(vec2f(uv.x + xOffset - 0.01*rgbOffsetOpt, y)).r + staticVal;
+  let green = iColor0(vec2f(uv.x + xOffset, y)).g + staticVal;
+  let blue  = iColor0(vec2f(uv.x + xOffset + 0.01*rgbOffsetOpt, y)).b + staticVal;
   var color = vec3f(red, green, blue);
   color = color - sin(uv.y*800.0)*0.04*scalinesOpt;
   return vec4f(color, 1.0);

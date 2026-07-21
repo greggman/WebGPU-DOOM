@@ -12,7 +12,7 @@
 //   iChannel0   : the rendered scene colour
 //   plus the DOOM G-buffer: world normal + linear depth (see normal0/depth0)
 // WGSL accesses the scalars as `U.iResolution` etc. and samples via the helpers
-// `texture0(uv)`, `normal0(uv)`, `depth0(uv)`. GLSL keeps the Shadertoy names
+// `iColor0(uv)`, `iNormal0(uv)`, `iDepth0(uv)`. GLSL keeps the Shadertoy names
 // verbatim (`iResolution`, `texture2D(iChannel0, uv)`), so the originals paste
 // in with minimal edits.
 

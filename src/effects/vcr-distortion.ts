@@ -38,7 +38,7 @@ fn getVideo(uv0: vec2f) -> vec3f {
   look.x = look.x + sin(look.y*10.0 + U.iTime)/50.0 * onOff(4.0,4.0,0.3) * (1.0 + cos(U.iTime*80.0)) * window;
   let vShift = 0.4*onOff(2.0,3.0,0.9) * (sin(U.iTime)*sin(U.iTime*20.0) + (0.5 + 0.1*sin(U.iTime*200.0)*cos(U.iTime)));
   look.y = fmod(look.y + vShift, 1.0);
-  return texture0(look).rgb;
+  return iColor0(look).rgb;
 }
 fn screenDistort(uv0: vec2f) -> vec2f {
   var uv = uv0 - vec2f(0.5, 0.5);

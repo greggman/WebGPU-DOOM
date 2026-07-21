@@ -32,7 +32,7 @@ fn uv_curve(uv0: vec2f) -> vec2f {
   return uv;
 }
 fn colorAt(uv: vec2f) -> vec3f {
-  var color = texture0(uv).rgb;
+  var color = iColor0(uv).rgb;
   let bw = (color.r + color.g + color.b) / 3.0;
   color = mix(color, vec3f(bw), 0.95);
   color.r = pow(color.r, 1.5);
@@ -69,7 +69,7 @@ fn uv_hstrip(uv0: vec2f) -> vec2f {
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let t = f32(i32(U.iTime * 11.0));
   var uv = fragCoord / U.iResolution.xy;
-  if (U.iMouse.z > 0.0) { return texture0(uv); }
+  if (U.iMouse.z > 0.0) { return iColor0(uv); }
   uv = uv_curve(uv);
   let ouv = uv;
   let xn = threshold(snoise1(U.iTime*10.0), 0.7) * 0.05;

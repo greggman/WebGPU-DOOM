@@ -6,7 +6,7 @@ Written by Claude
 
 [With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess.html)
 
-[WebGL2 version]https://greggman.github.io/WebGPU-DOOM/index-webgl2.html) [See below](#webgl2)
+[WebGL2 version](https://greggman.github.io/WebGPU-DOOM/index-webgl2.html) [See below](#webgl2)
 
 [WebGL2 With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess-webgl2.html)
 

@@ -47,7 +47,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   for (var i = 0; i < 20; i = i + 1) {
     let t = f32(i) * RCP;
     uv.x = sat1(uv.x + ofs*t);
-    let samplecol = texture0(uv);
+    let samplecol = iColor0(uv);
     let s = spectrum_offset(t);
     sum = sum + vec4f(samplecol.rgb * s, samplecol.a);
     wsum = wsum + s;

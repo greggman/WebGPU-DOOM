@@ -32,7 +32,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   for (var x = 0.0; x <= num_samples; x = x + 1.0) {
     for (var y = 0.0; y <= num_samples; y = y + 1.0) {
       count = count + 1.0;
-      color = color + texture0(texpos + (vec2f(x, y) * pixelsize / num_samples));
+      color = color + iColor0(texpos + (vec2f(x, y) * pixelsize / num_samples));
     }
   }
   color = color / count;

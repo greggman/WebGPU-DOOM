@@ -5,12 +5,12 @@
 // The harness is GLSL ES 3.00 with a `#define texture2D texture` shim, so the
 // effect modules' `glsl` bodies (Shadertoy `mainImage`, Shadertoy uniform names)
 // compile almost verbatim. iChannel0 is the scene colour; iChannelND is the DOOM
-// G-buffer (normal.xyz + linear depth.w), read via normal0()/depth0().
+// G-buffer (normal.xyz + linear depth.w), read via iNormal0()/iDepth0().
 
 import { createProgram } from './glutil.js';
 import { EFFECTS } from '../effects/index.js';
 import type { PostEffect } from '../effects/index.js';
-import type { PostEffectInfo, PostProcessControl } from '../renderer.js';
+import type { PostEffectInfo, PostProcessControl, ShaderError } from '../renderer.js';
 
 const VS = `#version 300 es
 void main(){ vec2 p=vec2(gl_VertexID==1?3.0:-1.0, gl_VertexID==2?3.0:-1.0); gl_Position=vec4(p,0.0,1.0); }`;
@@ -25,13 +25,17 @@ uniform vec4 iMouse;
 uniform sampler2D iChannel0;    // scene colour
 uniform sampler2D iChannelND;   // normal.xyz + linear depth.w
 out vec4 _outColor;
-vec3 normal0(vec2 uv){ return texture(iChannelND, uv).xyz; }
-float depth0(vec2 uv){ return texture(iChannelND, uv).w; }
+vec4 iColor0(vec2 uv){ return texture(iChannel0, uv); }        // == texture2D(iChannel0, uv)
+vec3 iNormal0(vec2 uv){ return texture(iChannelND, uv).xyz; }
+float iDepth0(vec2 uv){ return texture(iChannelND, uv).w; }
 `;
 
 const FS_FOOTER = `
 void main(){ vec4 c = vec4(0.0); mainImage(c, gl_FragCoord.xy); _outColor = c; }
 `;
+
+// Lines the fragment harness prepends, to map compile-log line numbers to the editor.
+const FS_HEADER_LINES = FS_HEADER.split('\n').length - 1;
 
 interface Locs {
   iResolution: WebGLUniformLocation | null;
@@ -53,9 +57,10 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
   const usable = EFFECTS.filter((e): e is PostEffect & { glsl: string } => typeof e.glsl === 'string');
   const emptyVao = gl.createVertexArray()!;
 
-  const progs = new Map<string, { prog: WebGLProgram; loc: Locs }>();
-  const build = (eff: PostEffect & { glsl: string }): { prog: WebGLProgram; loc: Locs } => {
-    const prog = createProgram(gl, VS, FS_HEADER + eff.glsl + FS_FOOTER);
+  // Compile a GLSL `mainImage` body into a program + uniform locations. Throws
+  // (with the shader info log) on a compile/link error.
+  const compile = (glsl: string): { prog: WebGLProgram; loc: Locs } => {
+    const prog = createProgram(gl, VS, FS_HEADER + glsl + FS_FOOTER);
     const loc: Locs = {
       iResolution: gl.getUniformLocation(prog, 'iResolution'),
       iTime: gl.getUniformLocation(prog, 'iTime'),
@@ -66,15 +71,16 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
     };
     return { prog, loc };
   };
+  const progs = new Map<string, { prog: WebGLProgram; loc: Locs }>();
   const get = (name: string): { prog: WebGLProgram; loc: Locs } => {
     let p = progs.get(name);
     if (!p) {
       const eff = usable.find((e) => e.name === name) ?? usable[0];
       try {
-        p = build(eff);
+        p = compile(eff.glsl);
       } catch (err) {
         console.warn(`post-process "${eff.name}" failed to compile — falling back to passthrough:`, err);
-        p = progs.get(usable[0].name) ?? build(usable[0]);
+        p = progs.get(usable[0].name) ?? compile(usable[0].glsl);
       }
       progs.set(name, p);
     }
@@ -95,6 +101,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
 
   return {
     effects: info,
+    language: 'glsl',
     current: () => curName,
     setEffect(name: string): void {
       if (!usable.some((e) => e.name === name)) return;
@@ -102,6 +109,25 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
       cur = get(name);
     },
     setMouse(x, y, down): void { mouse[0] = x; mouse[1] = y; mouse[2] = down ? 1 : 0; },
+    sourceOf: (name) => (usable.find((e) => e.name === name)?.glsl ?? usable[0].glsl).trim(),
+    setCustomSource(source: string): Promise<ShaderError[]> {
+      try {
+        cur = compile(source);
+        curName = 'custom';
+        return Promise.resolve([]);
+      } catch (e) {
+        // ANGLE/desktop GL: "ERROR: 0:<line>: <message>". The spec doesn't mandate
+        // this, so fall back to the whole log if nothing parses.
+        const log = e instanceof Error ? e.message : String(e);
+        const errs: ShaderError[] = [];
+        const re = /ERROR:\s*\d+:(\d+):\s*(.*)/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(log))) {
+          errs.push({ line: Math.max(1, Number(m[1]) - FS_HEADER_LINES), col: 1, message: m[2].trim() });
+        }
+        return Promise.resolve(errs.length ? errs : [{ line: 1, col: 1, message: log }]);
+      }
+    },
     setInputs(c, nd): void { colorTex = c; ndTex = nd; },
     render(targetFbo, width, height, dtMs): void {
       time += dtMs / 1000;

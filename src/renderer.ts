@@ -17,6 +17,14 @@ import type { PLine, PMobj } from './p_local.js';
  *  billboard shaders, so the game builds the array once. */
 export const SPRITE_FLOATS = 6;
 
+/** A shader compile error, positioned for inline display in the editor. Line and
+ *  column are 1-based and editor-relative (the harness preamble is subtracted). */
+export interface ShaderError {
+  line: number;
+  col: number;
+  message: string;
+}
+
 /** Attribution shown in the post-process toolbar. */
 export interface PostEffectInfo {
   name: string;
@@ -31,10 +39,18 @@ export interface PostEffectInfo {
  *  only on a post-process-enabled backend; undefined otherwise. */
 export interface PostProcessControl {
   readonly effects: PostEffectInfo[];
+  /** Shader language the editor edits: WGSL (WebGPU) or GLSL (WebGL2). */
+  readonly language: 'wgsl' | 'glsl';
   current(): string;
   setEffect(name: string): void;
   /** Cursor for iMouse (device px, button state). */
   setMouse(x: number, y: number, down: boolean): void;
+  /** The editable shader body for an effect (its `mainImage` + helpers). */
+  sourceOf(name: string): string;
+  /** Compile `source` and run it live as a "custom" effect. Resolves to an empty
+   *  array on success, or the list of compile errors to display. Leaves the
+   *  running effect unchanged when there are errors. */
+  setCustomSource(source: string): Promise<ShaderError[]>;
 }
 
 /** The overhead automap. State/logic is trivial; prepare/draw touch the GPU. */

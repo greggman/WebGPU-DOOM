@@ -30,7 +30,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
                    uv.y*0.5364 + 624.667*U.iTime + 2523.789*fi);
     var offset = vnoise2(np) - 0.5;
     offset = offset * 1.9;
-    sum = sum + vec4f(luma4(texture0(uv + offset)));
+    sum = sum + vec4f(luma4(iColor0(uv + offset)));
     num = num + 1.0;
   }
   return sum / num;

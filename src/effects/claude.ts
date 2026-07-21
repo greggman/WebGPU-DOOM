@@ -8,7 +8,7 @@ export const blueprint: PostEffect = {
   author: 'Claude',
   license: 'MIT',
   wgsl: `
-fn luma(uv: vec2f) -> f32 { return dot(texture0(uv).rgb, vec3f(0.299, 0.587, 0.114)); }
+fn luma(uv: vec2f) -> f32 { return dot(iColor0(uv).rgb, vec3f(0.299, 0.587, 0.114)); }
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let uv = fragCoord / U.iResolution.xy;
   let px = 1.0 / U.iResolution.xy;
@@ -40,9 +40,9 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   uv = uv + uv * off * off;                      // barrel curvature
   uv = uv * 0.5 + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
-  let r = texture0(uv + vec2f(0.0012, 0.0)).r;
-  let g = texture0(uv).g;
-  let b = texture0(uv - vec2f(0.0012, 0.0)).b;
+  let r = iColor0(uv + vec2f(0.0012, 0.0)).r;
+  let g = iColor0(uv).g;
+  let b = iColor0(uv - vec2f(0.0012, 0.0)).b;
   var c = vec3f(r, g, b);
   c = c * (0.85 + 0.15 * sin(uv.y * U.iResolution.y * 3.14159));       // scanlines
   c = c * (0.9 + 0.1 * sin(fragCoord.x * 3.14159 * 0.5));             // aperture grille
@@ -79,9 +79,9 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   var uv = fragCoord / U.iResolution.xy;
   let line = floor(uv.y * U.iResolution.y);
   uv.x = uv.x + (hash(vec2f(line, floor(U.iTime * 24.0))) - 0.5) * 0.006;  // per-line jitter
-  let r = texture0(uv + vec2f(0.004, 0.0)).r;
-  let g = texture0(uv).g;
-  let b = texture0(uv - vec2f(0.004, 0.0)).b;
+  let r = iColor0(uv + vec2f(0.004, 0.0)).r;
+  let g = iColor0(uv).g;
+  let b = iColor0(uv - vec2f(0.004, 0.0)).b;
   var c = vec3f(r, g, b);
   c = c + (hash(uv * U.iResolution.xy + U.iTime) - 0.5) * 0.14;            // static
   c = c + sin(uv.y * 3.0 - U.iTime * 2.0) * 0.03;                         // rolling band
@@ -111,7 +111,7 @@ export const halftone: PostEffect = {
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let scale = 5.0;
   let cell = (floor(fragCoord / scale) + 0.5) * scale;
-  let c = texture0(cell / U.iResolution.xy).rgb;
+  let c = iColor0(cell / U.iResolution.xy).rgb;
   let l = dot(c, vec3f(0.299, 0.587, 0.114));
   let d = length(fragCoord - cell) / (scale * 0.5);
   return vec4f(select(vec3f(1.0), c, d < (1.0 - l) * 1.3), 1.0);          // ink dots on paper
@@ -133,7 +133,7 @@ export const grayscale: PostEffect = {
   license: 'MIT',
   wgsl: `
 fn mainImage(fragCoord: vec2f) -> vec4f {
-  let l = dot(texture0(fragCoord / U.iResolution.xy).rgb, vec3f(0.299, 0.587, 0.114));
+  let l = dot(iColor0(fragCoord / U.iResolution.xy).rgb, vec3f(0.299, 0.587, 0.114));
   return vec4f(vec3f(pow(l, 0.8)), 1.0);                                  // whites wash out
 }`,
   glsl: `
@@ -150,7 +150,7 @@ export const posterize: PostEffect = {
   wgsl: `
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let n = 5.0;
-  return vec4f(floor(texture0(fragCoord / U.iResolution.xy).rgb * n + 0.5) / n, 1.0);
+  return vec4f(floor(iColor0(fragCoord / U.iResolution.xy).rgb * n + 0.5) / n, 1.0);
 }`,
   glsl: `
 void mainImage(out vec4 col, in vec2 fc) {
@@ -166,7 +166,7 @@ export const pixelate: PostEffect = {
   wgsl: `
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let px = 6.0;
-  return vec4f(texture0((floor(fragCoord / px) + 0.5) * px / U.iResolution.xy).rgb, 1.0);
+  return vec4f(iColor0((floor(fragCoord / px) + 0.5) * px / U.iResolution.xy).rgb, 1.0);
 }`,
   glsl: `
 void mainImage(out vec4 col, in vec2 fc) {

@@ -22,15 +22,15 @@ fn curve(uv0: vec2f) -> vec2f {
 fn mainImage(fragCoord: vec2f) -> vec4f {
   let q = fragCoord / U.iResolution.xy;
   let uv = curve(q);
-  let oricol = texture0(vec2f(q.x, q.y)).xyz;
+  let oricol = iColor0(vec2f(q.x, q.y)).xyz;
   var col: vec3f;
   let x = sin(0.3*U.iTime + uv.y*21.0) * sin(0.7*U.iTime + uv.y*29.0) * sin(0.3 + 0.33*U.iTime + uv.y*31.0) * 0.0017;
-  col.r = texture0(vec2f(x+uv.x+0.001, uv.y+0.001)).x + 0.05;
-  col.g = texture0(vec2f(x+uv.x+0.000, uv.y-0.002)).y + 0.05;
-  col.b = texture0(vec2f(x+uv.x-0.002, uv.y+0.000)).z + 0.05;
-  col.r += 0.08 * texture0(0.75*vec2f(x+0.025, -0.027) + vec2f(uv.x+0.001, uv.y+0.001)).x;
-  col.g += 0.05 * texture0(0.75*vec2f(x-0.022, -0.02) + vec2f(uv.x+0.000, uv.y-0.002)).y;
-  col.b += 0.08 * texture0(0.75*vec2f(x-0.02, -0.018) + vec2f(uv.x-0.002, uv.y+0.000)).z;
+  col.r = iColor0(vec2f(x+uv.x+0.001, uv.y+0.001)).x + 0.05;
+  col.g = iColor0(vec2f(x+uv.x+0.000, uv.y-0.002)).y + 0.05;
+  col.b = iColor0(vec2f(x+uv.x-0.002, uv.y+0.000)).z + 0.05;
+  col.r += 0.08 * iColor0(0.75*vec2f(x+0.025, -0.027) + vec2f(uv.x+0.001, uv.y+0.001)).x;
+  col.g += 0.05 * iColor0(0.75*vec2f(x-0.022, -0.02) + vec2f(uv.x+0.000, uv.y-0.002)).y;
+  col.b += 0.08 * iColor0(0.75*vec2f(x-0.02, -0.018) + vec2f(uv.x-0.002, uv.y+0.000)).z;
   col = clamp(col*0.6 + 0.4*col*col, vec3f(0.0), vec3f(1.0));
   let vig = 16.0 * uv.x*uv.y * (1.0-uv.x) * (1.0-uv.y);
   col = col * pow(vig, 0.3);

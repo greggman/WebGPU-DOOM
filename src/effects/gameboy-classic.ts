@@ -24,7 +24,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   let resolution = vec2f(U.iResolution.x/pix_size, U.iResolution.y/pix_size);
   let uv = mix(coord, floor(coord*resolution) / resolution, blend_factor);
   let pix = uv * resolution;
-  let orig = texture0(uv).rgb;
+  let orig = iColor0(uv).rgb;
   var col = line;
   let line_width = vec2f(1.0/U.iResolution.x, 1.0/U.iResolution.y);
   let pix_thresh = mix(vec2f(0.0), line_width, blend_factor);

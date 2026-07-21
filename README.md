@@ -1,0 +1,141 @@
+# WebGPU-DOOM
+
+Written by Claude
+
+## Why?
+
+I'm not sure this is true but in the age of AI code, lots of people
+are questioning if we need libraries anymore. I'm not sure DOOM is
+the best example to ask for that since it has it's own way of doing
+things which is long before GPUs were common in PCs.
+
+That said, you can ask the AI to make your app using some framework,
+or you can ask your AI to make your app directly. There are tradeoffs.
+Using a common framework might already have integrations for features
+you want. On the other hand, the AI can often just make those features
+for you. Conversely, using a framework might push your app into some
+design that doesn't really fit your app. Asking the AI you can often
+get it to make exactly what your app needs.
+
+As one example, we can compare [three-doom](https://github.com/mrdoob/three-doom)
+to this port.
+
+* I'm guessing they took the same amount of prompting. It didn't 
+  take that long to get DOOM running in WebGPU. Maybe 3 hours.
+  It took longer to find a few bugs but none of those bugs were
+  anywhere need the graphics code.
+
+* Three.js is a generic 3d library which has almost zero relation to what is
+  needed to port DOOM. As such, three-doom is 600k larger (minified), (150k
+  larger gzipped). 2.4x larger than this port (289k vs 122k). It's also 2x to 3x
+  slower. (*) Maybe neither of those matter or maybe more iterations would
+  change that. A few hundred kilobytes more or even a 3x speed difference means
+  nothing to DOOM in 2026 as the entire game only renders around 800 - 1600
+  triangles a frame. Compare to a modern AAA game that might draw 5 to 10
+  million triangles per frame. 4-5 orders of magnitude more. Further, the data
+  itself, `DOOM1.WAD` is 4meg and so out shadows any JavaScript size.
+
+  What that means is it doesn't matter that a framework is slower
+  or larger for this specific port. That said, if you're making
+  something more modern, or something targeting slower devices,
+  a speed difference might matter a lot so it might pay off to
+  ask your AI of choice to make a custom solution for your project.
+
+## Prompting Details
+
+Mostly I just made a folder with the source to doom in a sub-folder.
+I asked Claude to convert it to TypeScript and WebGPU with no libraries
+and use esbuild to build it.
+
+## Interesting issues
+
+1. Demo failed because of stubbed out stuff.
+
+   It got up to running the demo but behavior wasn't the same.
+   It spent quite a long time on this and when it finally found it
+   it was stuff it had stubbed out earlier. I questioned why it hadn't
+   added all the stubbed parts to some TODO list. It searched the code
+   and made a list.
+
+2. Built C version to compare for demo.
+
+   When it couldn't figure out the demo sync issues it finally
+   build the C version with no graphics and added a lot of logging
+   so it could compare one to the other exactly.
+
+3. Build C version to compare for audio
+
+   It spent several hours trying to get the music correct. At one point it wrote
+   out .WAV files and asked me to listen. Even though it got better things will
+   still not right so I told it output the audio from the C version
+   and compare. Even this did't fix it.
+
+   This particular part took way too long. AFAICT it's still not
+   perfect but it's good enough and we moved on, though I did suggest
+   building DOSBOX and running the C code in it and outputting the
+   audio. Claude thought that was a good idea.
+
+4. Small things that were hacked by Claude
+
+   * The Level Map
+
+     Claude hacked together the level map. I don't know how it's
+     implemented in DOOM but I'm guessing it just works by marking
+     which segments are rendered since DOOM's software renderer
+     works by never over-drawing, they know exactly that the user
+     can see. This is as opposed to triangle renderers which often
+     use z-buffers and which any results are still on the GPU.
+
+     Claude added it but didn't take into account that you should
+     not be able to see behind doors. It further didn't know that
+     the map doesn't fill in while viewing it. I only bring this up
+     because, assuming it was going from the original code, it seems
+     like these things should be encoded in that code. It's interesting
+     that apparently Claude just imagined how it worked and made up
+     it's own solutions. Or else maybe it looked at the original code
+     but just enough to get an idea how to draw a map, not its specific
+     behavior.
+
+   * Intermission
+
+     This is another example where we needed to finish the game and
+     so I asked Claude to add in things. For some reason it made
+     a black screen with small red text showing your score for the
+     level.
+
+     The real DOOM does a tally of your score over a world map
+     in a large font with labels left justified and scores right
+     justified. I have no idea why Claude thought the black screen
+     was acceptable.
+
+     Even after asking it to fix things it was a few more iterations
+     to get everything correct. Kills was 0. Time was missing minutes.
+     It then over corrected for PAR.
+
+     I bring this up because, at least for now, a single step takes
+     5-10 minutes so every step that Claude doesn't get correct adds
+     up. You think you'll make this 5 minute request and 90 minutes
+     goes by.
+
+   * A Seam
+
+     I don't know if I didn't notice but a day into this I saw a
+     seam in the ceiling in the first level. This is a place where
+     the triangles don't line up enough to entire cover the background.
+
+     Claude chugged along trying all kinds of things, some of which made
+     things worse. None of which fixed them. Plus, it couldn't see the
+     seam itself. It even claimed to have written a renderer at one point
+     but claimed no seams.
+
+     Finally I told it to run the game in puppeteer and give me a readout
+     for player position and angle so I could tell it exactly where to be. I also told it to clear to magenta and stop drawing the sky so
+     the seam would be easy to spot. This took a few iterations as it
+     claimed it couldn't use puppeteer with WebGPU. So I hand made an
+     example. Once I got that working I pointed Claude at it and it was
+     able to make a repo and work through the seam issue.
+
+(*) The comparison was at "initial commit" which was feature parity. Since then
+    many new features have been added.
+
+# [LICENSE](LICENSE.md)

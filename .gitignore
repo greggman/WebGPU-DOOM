@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.timedemo.mjs
+*.wav
+*.obj
+*.exe
+*.oplcap
+*.pdb
+*.ilk

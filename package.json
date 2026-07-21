@@ -1,0 +1,24 @@
+{
+  "name": "webgpu-doom",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-2.0-only",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "serve": "node build.js --serve",
+    "typecheck": "tsc --noEmit",
+    "timedemo": "esbuild tools/timedemo.ts --bundle --platform=node --format=esm --outfile=.timedemo.mjs --log-level=error && node .timedemo.mjs",
+    "demotrace": "esbuild tools/demotrace.ts --bundle --platform=node --format=esm --outfile=.demotrace.mjs --log-level=error && node .demotrace.mjs",
+    "gen": "node tools/gen-info.js && node tools/gen-tables.js",
+    "setupdraws": "esbuild tools/setupdraws.ts --bundle --platform=node --format=esm --outfile=.setupdraws.mjs --log-level=error && node .setupdraws.mjs",
+    "musictest": "esbuild tools/musictest.ts --bundle --platform=node --format=esm --outfile=.musictest.mjs --log-level=error && node .musictest.mjs",
+    "oplcap": "esbuild tools/oplcap.ts --bundle --platform=node --format=esm --outfile=.oplcap.mjs --log-level=error && node .oplcap.mjs"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.60",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

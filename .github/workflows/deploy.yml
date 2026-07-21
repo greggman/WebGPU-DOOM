@@ -47,6 +47,7 @@ jobs:
              index-webgl2.html \
              index-postprocess.html \
              index-postprocess-webgl2.html \
+             style.css \
              stats.module.js \
              doom1.wad \
              _site/

@@ -1,0 +1,49 @@
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  #toolbar {
+    flex: 0 0 auto; width: 100%; box-sizing: border-box;
+    display: flex; gap: 1.5em; align-items: center;
+    font: 13px/1.4 monospace; background: #000; color: #fff; padding: 6px 12px;
+  }
+  #toolbar select, #toolbar button {
+    font: inherit; color: #fff; background: #333; border: 0; padding: 4px 8px; border-radius: 3px; cursor: pointer;
+  }
+  #toolbar a { color: #08f; text-decoration: none; }
+  #toolbar a:hover { text-decoration: underline; }
+  #toolbar .sep { opacity: 0.5; }
+  #toolbar .spacer { flex: 1; }
+  #toolbar #help {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; border-radius: 50%;
+    background: #333; color: #fff; font-weight: bold; text-decoration: none;
+  }
+  #toolbar #help:hover { background: #08f; text-decoration: none; }
+
+  #stage { flex: 1 1 auto; display: flex; min-height: 0; }
+  #screen { flex: 1 1 0; display: block; min-width: 0; min-height: 0; }
+  body.editing #screen { flex-grow: 0; flex-shrink: 0; }   /* basis set by the divider */
+
+  #splitter { display: none; flex: 0 0 6px; background: #333; cursor: col-resize; }
+  #splitter:hover { background: #08f; }
+  body.editing #splitter { display: block; }
+
+  #editor { display: none; flex-direction: column; min-width: 0; background: #1e1e1e; }
+  body.editing #editor { display: flex; flex: 1 1 0; }
+  #editor-bar { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #111; color: #ccc; font: 12px monospace; }
+  #editor-bar button { font: inherit; background: #333; color: #fff; border: 0; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+  #editor-status { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #editor-host { flex: 1 1 0; min-height: 0; overflow: hidden; }
+  #editor-errors {
+    flex: 0 0 auto; max-height: 40%; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    background: #2a1515; color: #f88; padding: 6px 8px; font: 11px/1.4 monospace; border-top: 1px solid #533;
+  }
+
+  @media (max-width: 600px) {
+    #toolbar .c-info,
+    #toolbar .c-help,
+    #toolbar #help,
+    #toolbar .c-edit {
+      display: none;
+    }
+  }

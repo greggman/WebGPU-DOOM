@@ -51,6 +51,24 @@ var Stats = function () {
 
 	showPanel( 0 );
 
+  const params = new URLSearchParams(location.search);
+  if (!params.get('stats')) {
+    container.style.display = 'none';
+    const noop = () => {};
+    return {
+      addPanel: noop,
+      showPanel: noop,
+      begin: noop,
+      end: noop,
+      update: noop,
+      REVISION: 16.1,
+      domElement: container,
+      dom: container,
+      setMode: noop,
+    };
+  }
+
+
 	return {
 
 		REVISION: 16,

@@ -35,8 +35,15 @@ export interface WebGL2Wipe {
   resize(w: number, h: number): void;
   /** Bind the offscreen scene target and, if a melt was requested, snapshot the
    *  previous frame as the old screen. Call at the start of beginFrame, before
-   *  clearing. */
+   *  clearing. (Non-post-process path.) */
   beginScene(): void;
+  /** Snapshot the previous frame as the old screen if a melt was requested, WITHOUT
+   *  binding the scene target — for the post-process path, whose scene renders into
+   *  a separate G-buffer and whose filter later writes sceneFramebuffer(). */
+  capture(): void;
+  /** The offscreen scene framebuffer, so the post-process filter can render the
+   *  finished image into it for the melt to composite. */
+  sceneFramebuffer(): WebGLFramebuffer | null;
   request(): void;
   /** Composite the scene (melting the old screen over it) to the default
    *  framebuffer. Call after all scene/HUD passes. */
@@ -86,18 +93,25 @@ export function createWebGL2Wipe(gl: WebGL2RenderingContext): WebGL2Wipe {
     active = false; pending = false; // a resize invalidates any in-flight melt
   }
 
+  // Snapshot the previous frame (still in sceneTex) into oldTex if a melt was
+  // requested. copyTexSubImage2D reads the bound framebuffer's colour attachment.
+  function capture(): void {
+    if (!pending) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+    gl.bindTexture(gl.TEXTURE_2D, oldTex);
+    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+    pending = false; active = true; acc = 0;
+  }
+
   return {
     melting: () => active,
     resize,
     request(): void { if (!active) { pending = true; melt.init(); } },
+    capture,
+    sceneFramebuffer: () => sceneFbo,
     beginScene(): void {
+      capture();
       gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
-      if (pending) {
-        // Snapshot the previous frame (still in sceneTex) as the old screen.
-        gl.bindTexture(gl.TEXTURE_2D, oldTex);
-        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
-        pending = false; active = true; acc = 0;
-      }
     },
     present(dtMs: number): void {
       if (active) {

@@ -1,13 +1,15 @@
 // WebGL2 implementation of the Renderer seam — the analogue of webgpu/backend.ts.
 // Owns the GL context, the shared indexed-colour textures (atlas, per-layer
 // info, PLAYPAL, COLORMAP, live sector light, animation redirect), and the four
-// passes (world, sky, sprites, HUD), each a GLSL ES 3.0 port of its WGSL. It
-// renders straight to the default framebuffer; the screen melt is not ported yet
-// (transitions are instant), and the automap is a no-op until its line pass lands.
+// passes (world, sky, sprites, HUD), each a GLSL ES 3.0 port of its WGSL, plus
+// the screen melt (wipe.ts) and automap (automap.ts). When a post-process factory
+// is supplied the scene renders into a G-buffer (colour + normal/depth) and the
+// filter (postprocess.ts) runs before the melt — mirroring the WebGPU backend.
 
 import { createProgram, dataTexture2D } from './glutil.js';
 import { createWebGL2Wipe } from './wipe.js';
 import { createAutomap } from './automap.js';
+import type { WebGL2PostProcessFactory } from './postprocess.js';
 import { decodePatch, type IndexedImage } from '../patch.js';
 import { spriteTextures } from '../things.js';
 import { initSpriteDefs } from '../sprites.js';
@@ -22,20 +24,29 @@ import type { Quad } from '../hud2d.js';
 
 // ---- shaders --------------------------------------------------------------
 
-const WORLD_VS = `#version 300 es
+// The scene passes optionally write a 2nd MRT target (normal.xyz + linear depth.w)
+// for the post-process G-buffer, exactly like the WebGPU passes. `gb` off yields
+// the original single-output shaders so the plain page is unchanged.
+const gbDecl = (gb: boolean): string =>
+  gb ? 'layout(location=0) out vec4 fragColor; layout(location=1) out vec4 o_nd;' : 'out vec4 fragColor;';
+
+const WORLD_VS = (gb: boolean): string => `#version 300 es
 layout(location=0) in vec3 a_pos; layout(location=1) in vec2 a_uv;
 layout(location=2) in float a_sector; layout(location=3) in float a_layer;
 uniform mat4 u_mvp;
 out vec2 v_uv; flat out int v_sector; out float v_depth; flat out int v_layer;
-void main(){ vec4 c=u_mvp*vec4(a_pos,1.0); gl_Position=c; v_uv=a_uv; v_sector=int(a_sector); v_depth=c.w; v_layer=int(a_layer); }`;
+${gb ? 'out vec3 v_wpos;' : ''}
+void main(){ vec4 c=u_mvp*vec4(a_pos,1.0); gl_Position=c; v_uv=a_uv; v_sector=int(a_sector); v_depth=c.w; v_layer=int(a_layer); ${gb ? 'v_wpos=a_pos;' : ''} }`;
 
-const WORLD_FS = `#version 300 es
+const WORLD_FS = (gb: boolean): string => `#version 300 es
 precision highp float; precision highp int; precision highp usampler2DArray; precision highp usampler2D;
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_texInfo; uniform highp usampler2D u_texTrans;
 uniform sampler2D u_sectorLight; uniform highp usampler2D u_colormap; uniform sampler2D u_palette;
 uniform int u_fixedMap; uniform int u_paletteRow; uniform float u_extralight;
-in vec2 v_uv; flat in int v_sector; in float v_depth; flat in int v_layer; out vec4 fragColor;
+in vec2 v_uv; flat in int v_sector; in float v_depth; flat in int v_layer; ${gbDecl(gb)}
+${gb ? 'in vec3 v_wpos;' : ''}
 void main(){
+  ${gb ? 'vec3 nrm = normalize(cross(dFdx(v_wpos), dFdy(v_wpos)));' : ''}
   int L=int(texelFetch(u_texTrans,ivec2(v_layer,0),0).r);
   vec2 sz=texelFetch(u_texInfo,ivec2(L,0),0).xy;
   ivec2 texel=ivec2(fract(v_uv)*sz);
@@ -48,17 +59,18 @@ void main(){
     row=int(clamp((15.0-li)*4.0 + clamp(v_depth*(12.0/1024.0),0.0,12.0) - 12.0 - u_extralight*8.0,0.0,31.0)); }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
+  ${gb ? 'o_nd = vec4(nrm, v_depth);' : ''}
 }`;
 
 const SKY_VS = `#version 300 es
 out vec2 v_ndc;
 void main(){ vec2 p=vec2(gl_VertexID==1?3.0:-1.0, gl_VertexID==2?3.0:-1.0); v_ndc=p; gl_Position=vec4(p,0.0,1.0); }`;
 
-const SKY_FS = `#version 300 es
+const SKY_FS = (gb: boolean): string => `#version 300 es
 precision highp float; precision highp int; precision highp usampler2DArray;
 uniform vec3 u_right,u_up,u_forward; uniform float u_tanHalf,u_aspect; uniform int u_skyLayer;
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_texInfo; uniform sampler2D u_palette;
-in vec2 v_ndc; out vec4 fragColor; const float PI=3.14159265359;
+in vec2 v_ndc; ${gbDecl(gb)} const float PI=3.14159265359;
 void main(){
   vec3 dir=normalize(u_forward + u_right*(v_ndc.x*u_tanHalf*u_aspect) + u_up*(v_ndc.y*u_tanHalf));
   vec2 sz=texelFetch(u_texInfo,ivec2(u_skyLayer,0),0).xy;
@@ -66,14 +78,16 @@ void main(){
   float vv=clamp((100.0-dir.y*128.0)/128.0,0.0,1.0);
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(vec2(uu,vv)*sz),u_skyLayer),0).rg;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),0),0).rgb,1.0);
+  ${gb ? 'o_nd = vec4(0.0, 0.0, 0.0, 20000.0);' : ''}
 }`;
 
-const SPRITE_VS = `#version 300 es
+const SPRITE_VS = (gb: boolean): string => `#version 300 es
 precision highp float;
 layout(location=0) in vec3 a_pos; layout(location=1) in float a_layer;
 layout(location=2) in float a_flip; layout(location=3) in float a_light;
 uniform mat4 u_mvp; uniform vec3 u_camRight; uniform sampler2D u_texInfo;
 out vec2 v_uv; flat out float v_light; out float v_depth; flat out int v_layer; flat out int v_shadow;
+${gb ? 'flat out vec3 v_nrm;' : ''}
 void main(){
   vec4 info=texelFetch(u_texInfo,ivec2(int(a_layer),0),0);
   vec2 size=info.xy; float leftOff=info.z, topOff=info.w;
@@ -88,13 +102,15 @@ void main(){
   vec3 world=vec3(a_pos.x,0.0,a_pos.z)+u_camRight*x+vec3(0.0,y,0.0);
   vec4 c=u_mvp*vec4(world,1.0); gl_Position=c;
   v_uv=uv; v_light=a_light; v_depth=c.w; v_layer=int(a_layer); v_shadow=(flags>>1)&1;
+  ${gb ? 'v_nrm=normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}
 }`;
 
-const SPRITE_FS = `#version 300 es
+const SPRITE_FS = (gb: boolean): string => `#version 300 es
 precision highp float; precision highp int; precision highp usampler2DArray; precision highp usampler2D;
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_texInfo; uniform highp usampler2D u_colormap;
 uniform sampler2D u_palette; uniform int u_fixedMap; uniform int u_paletteRow; uniform float u_extralight;
-in vec2 v_uv; flat in float v_light; in float v_depth; flat in int v_layer; flat in int v_shadow; out vec4 fragColor;
+in vec2 v_uv; flat in float v_light; in float v_depth; flat in int v_layer; flat in int v_shadow; ${gbDecl(gb)}
+${gb ? 'flat in vec3 v_nrm;' : ''}
 void main(){
   vec2 size=texelFetch(u_texInfo,ivec2(v_layer,0),0).xy;
   ivec2 texel=ivec2(clamp(v_uv*size,vec2(0.0),size-vec2(1.0)));
@@ -110,10 +126,11 @@ void main(){
     vec3 rgb=texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb;
     ivec2 p=ivec2(gl_FragCoord.xy);
     float shimmer=((p.x+p.y)&1)==0?0.18:0.0;
-    fragColor=vec4(rgb,0.34+shimmer); return;
+    fragColor=vec4(rgb,0.34+shimmer); ${gb ? 'o_nd=vec4(v_nrm, v_depth);' : ''} return;
   }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
+  ${gb ? 'o_nd=vec4(v_nrm, v_depth);' : ''}
 }`;
 
 const HUD_VS = `#version 300 es
@@ -128,22 +145,34 @@ void main(){
   v_uv=corner; v_layer=int(a_layer); v_palRow=int(a_palRow);
 }`;
 
-const HUD_FS = `#version 300 es
+const HUD_FS = (gb: boolean): string => `#version 300 es
 precision highp float; precision highp int; precision highp usampler2DArray;
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_sizes; uniform sampler2D u_palette;
-in vec2 v_uv; flat in int v_layer; flat in int v_palRow; out vec4 fragColor;
+in vec2 v_uv; flat in int v_layer; flat in int v_palRow; ${gbDecl(gb)}
 void main(){
   vec2 size=texelFetch(u_sizes,ivec2(v_layer,0),0).xy;
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(v_uv*size),v_layer),0).rg;
   if(idx.g==0u) discard;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),v_palRow),0).rgb,1.0);
+  ${gb ? 'o_nd=vec4(0.0,0.0,0.0,0.0);' : ''}
 }`;
 
 // ---- backend --------------------------------------------------------------
 
-export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Renderer {
+export function createWebGL2Backend(
+  canvas: HTMLCanvasElement,
+  wad: Wad,
+  opts: { postProcessFactory?: WebGL2PostProcessFactory } = {},
+): Renderer {
   const gl: WebGL2RenderingContext = canvas.getContext('webgl2', { antialias: false, alpha: false })
     ?? (() => { throw new Error('WebGL2 not available in this browser'); })();
+
+  // Post-process: scene renders into a G-buffer (colour + normal/depth); the
+  // filter runs before the melt. Needs float render targets (RGBA16F).
+  const gb = !!opts.postProcessFactory;
+  if (gb && !gl.getExtension('EXT_color_buffer_float')) {
+    console.warn('EXT_color_buffer_float unavailable — post-process G-buffer may fail');
+  }
 
   // Every atlas is tightly packed with no per-row padding. The default
   // UNPACK_ALIGNMENT of 4 would corrupt any RG8UI patch of odd width (row =
@@ -161,14 +190,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Render
   const cmapRows = Math.floor(colormap.length / 256);
   const cmapTex = dataTexture2D(gl, gl.R8UI, gl.RED_INTEGER, gl.UNSIGNED_BYTE, 256, cmapRows, colormap.subarray(0, 256 * cmapRows));
 
-  const worldProg = createProgram(gl, WORLD_VS, WORLD_FS);
-  const skyProg = createProgram(gl, SKY_VS, SKY_FS);
-  const spriteProg = createProgram(gl, SPRITE_VS, SPRITE_FS);
-  const hudProg = createProgram(gl, HUD_VS, HUD_FS);
+  const worldProg = createProgram(gl, WORLD_VS(gb), WORLD_FS(gb));
+  const skyProg = createProgram(gl, SKY_VS, SKY_FS(gb));
+  const spriteProg = createProgram(gl, SPRITE_VS(gb), SPRITE_FS(gb));
+  const hudProg = createProgram(gl, HUD_VS, HUD_FS(gb));
   const U = (p: WebGLProgram, n: string): WebGLUniformLocation | null => gl.getUniformLocation(p, n);
 
   const wipe = createWebGL2Wipe(gl);
   const automapCtl = createAutomap(gl);
+  const postprocess = opts.postProcessFactory ? opts.postProcessFactory(gl) : null;
 
   // Sprites: shared for every level, decode once (same as the WebGPU backend).
   const sprTex = spriteTextures(wad, initSpriteDefs(wad));
@@ -205,17 +235,50 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Render
   let vertexCount = 0, layerCount = 0, sectorCount = 0, spriteLayerOffset = 0;
   let width = 0, height = 0;
 
+  // Post-process G-buffer: colour + normal/depth, both sampled by the filter.
+  let gFbo: WebGLFramebuffer | null = null;
+  let gColorTex: WebGLTexture | null = null, gNdTex: WebGLTexture | null = null, gDepthRb: WebGLRenderbuffer | null = null;
+
   const emptyVao = gl.createVertexArray()!;
   const spriteVao = gl.createVertexArray()!;
   const spriteVbo = gl.createBuffer()!;
   const hudVao = gl.createVertexArray()!;
   const hudVbo = gl.createBuffer()!;
 
+  function makeColorTex(internal: number, format: number, type: number): WebGLTexture {
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal, width, height, 0, format, type, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+
   function resize(): void {
     const dpr = Math.min(window.devicePixelRatio, 2);
     width = canvas.width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     height = canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     wipe.resize(width, height);
+    if (postprocess) {
+      if (gColorTex) gl.deleteTexture(gColorTex);
+      if (gNdTex) gl.deleteTexture(gNdTex);
+      if (gDepthRb) gl.deleteRenderbuffer(gDepthRb);
+      if (gFbo) gl.deleteFramebuffer(gFbo);
+      gColorTex = makeColorTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+      gNdTex = makeColorTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
+      gDepthRb = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, gDepthRb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
+      gFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gColorTex, 0);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, gNdTex, 0);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, gDepthRb);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      postprocess.setInputs(gColorTex, gNdTex);
+    }
   }
 
   function makeAtlas(textures: Texture[]): void {
@@ -249,6 +312,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Render
     get width() { return width; },
     get height() { return height; },
     automap: automapCtl,
+    postProcess: postprocess ?? undefined,
     spriteLayerOf(name) { const i = sprIndex.get(name); return i === undefined ? undefined : spriteLayerOffset + i; },
     resize,
     setLevel(geo, sectors) {
@@ -277,12 +341,27 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Render
     isMelting: () => wipe.melting(),
     requestWipe: () => wipe.request(),
     beginFrame(clearMagenta) {
-      wipe.beginScene(); // binds the offscreen target + snapshots the old screen
+      if (postprocess) {
+        // Snapshot the old screen (prev filter output) then render the scene into
+        // the G-buffer instead of the melt target.
+        wipe.capture();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      } else {
+        wipe.beginScene(); // binds the offscreen target + snapshots the old screen
+      }
       gl.viewport(0, 0, width, height);
-      gl.clearColor(clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1);
       gl.disable(gl.BLEND);
       gl.depthMask(true);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (postprocess) {
+        // Colour: magenta/black; normal/depth: zero normal, far depth.
+        gl.clearBufferfv(gl.COLOR, 0, [clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1]);
+        gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 20000]);
+        gl.clearBufferfv(gl.DEPTH, 0, [1]);
+      } else {
+        gl.clearColor(clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      }
     },
     hudBeginFrame: () => {},
     drawSky(right, up, forward, tanHalfY, aspect, skyLayer) {
@@ -357,6 +436,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement, wad: Wad): Render
       for (let i = 0; i < 3; i++) gl.vertexAttribDivisor(i, 0);
       gl.bindVertexArray(null);
     },
-    present: (dtMs) => { wipe.present(dtMs); gl.flush(); },
+    present: (dtMs) => {
+      // Resolve the G-buffer through the filter into the melt's scene target, then
+      // let the melt blit/melt that to the default framebuffer.
+      if (postprocess) postprocess.render(wipe.sceneFramebuffer(), width, height, dtMs);
+      wipe.present(dtMs);
+      gl.flush();
+    },
   };
 }

@@ -4,7 +4,11 @@ Written by Claude
 
 [Live](https://greggman.github.io/WebGPU-DOOM)
 
+[With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess.html)
+
 [WebGL2 version]https://greggman.github.io/WebGPU-DOOM/index-webgl2.html) [See below](#webgl2)
+
+[WebGL2 With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess-webgl2.html)
 
 ## Why?
 
@@ -154,6 +158,13 @@ Interestingly, since we had already setup rendering via Puppeteer it used
 that to check things were working. Something it didn't do when building
 the original.
 
+## Post Processing
+
+Again, ask and ye shall receive. I asked Claude to add post processing. I gave it a list of effects. 20 minutes later
+I had examples of post processing. I pointed it at
+[pico-8-post-processing](https://github.com/greggman/pico-8-post-processing), and told it to copy and adapt
+some of the shaders, and keep the credits, and a 15 minutes
+later that was in.
 
 # [LICENSE](LICENSE.md)
 

@@ -7,7 +7,8 @@
 // The harness below provides the Shadertoy-named inputs so ports stay close to
 // their originals: `U.iResolution` (vec3), `U.iTime`, `U.iFrame`, `U.iMouse`,
 // plus `iColor0(uv)` (iChannel0 colour), `iNormal0(uv)`/`iDepth0(uv)` (the DOOM
-// G-buffer), and `fmod`/`fmod2` (GLSL's mod, absent from WGSL).
+// G-buffer), and `fmod`/`fmod2` (GLSL's *floored* mod, `x - y*floor(x/y)` — WGSL's
+// `%` is truncated, so it differs for negative operands the ported effects rely on).
 
 import { EFFECTS } from '../effects/index.js';
 import type { PostEffectInfo, PostProcessControl, ShaderError } from '../renderer.js';

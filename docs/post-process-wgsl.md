@@ -60,13 +60,18 @@ Notes on the G-buffer:
 
 ## Helpers
 
-WGSL has no `mod()`, so the harness provides:
+WGSL's `%` is a **truncated** remainder — `e1 - e2*trunc(e1/e2)` — whose sign
+follows the dividend (`(-1.5) % 1.0 == -0.5`). GLSL's `mod` is **floored** —
+`e1 - e2*floor(e1/e2)` — and always wraps positive (`mod(-1.5, 1.0) == 0.5`).
+They agree only when both operands are non-negative. The ported effects use the
+floored form (e.g. `mod(-iTime*speed, 1.0)`), so the harness provides it:
 
-- `fmod(x: f32, y: f32) -> f32`
+- `fmod(x: f32, y: f32) -> f32`         // x - y * floor(x / y)
 - `fmod2(x: vec2f, y: vec2f) -> vec2f`
 
-Everything else is standard WGSL (`sin`, `fract`, `mix`, `clamp`, `select`,
-`pow`, `length`, `dot`, `normalize`, `mat2x2f`, …).
+Use these where a GLSL shader uses `mod`; plain `%` is fine when both operands are
+non-negative. Everything else is standard WGSL (`sin`, `fract`, `mix`, `clamp`,
+`select`, `pow`, `length`, `dot`, `normalize`, `mat2x2f`, …).
 
 ## Examples
 
@@ -87,17 +92,3 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   return vec4f(vec3f(1.0 - z), 1.0);   // near = white, far = black
 }
 ```
-
-## URL parameters
-
-- `?pp=<name>` — start on a built-in effect. Names:
-  `none`, `normals`, `depth`, `outline`, `blueprint`, `crt`, `vhs`, `halftone`,
-  `grayscale`, `posterize`, `pixelate`, `MattiasCRT`, `Distorted TV`,
-  `VCR distortion`, `Old TV effect`, `glitch2`, `There's a bug in the TV`,
-  `LED Display`, `Gameboy Classic`, `CMYK Halftone`.
-  Example: `index-postprocess.html?pp=crt`
-- `#post=<base64>` — a shared custom shader. The editor's **save & copy URL**
-  button deflates your shader and writes it here (base64url), then copies the
-  link; opening such a URL loads the shader and runs it.
-
-Both can combine, e.g. `index-postprocess.html?pp=none#post=<…>`.

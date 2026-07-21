@@ -88,16 +88,3 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 ```
 
-## URL parameters
-
-- `?pp=<name>` — start on a built-in effect. Names:
-  `none`, `normals`, `depth`, `outline`, `blueprint`, `crt`, `vhs`, `halftone`,
-  `grayscale`, `posterize`, `pixelate`, `MattiasCRT`, `Distorted TV`,
-  `VCR distortion`, `Old TV effect`, `glitch2`, `There's a bug in the TV`,
-  `LED Display`, `Gameboy Classic`, `CMYK Halftone`.
-  Example: `index-postprocess-webgl2.html?pp=crt`
-- `#post=<base64>` — a shared custom shader. The editor's **save & copy URL**
-  button deflates your shader and writes it here (base64url), then copies the
-  link; opening such a URL loads the shader and runs it.
-
-Both can combine, e.g. `index-postprocess-webgl2.html?pp=none#post=<…>`.

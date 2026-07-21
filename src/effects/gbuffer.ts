@@ -75,3 +75,48 @@ export const outline: PostEffect = {
     c = vec4(mix(texture2D(iChannel0, uv).rgb, vec3(0.0), ink), 1.0);
   }`,
 };
+
+// Single-pass depth of field. Autofocus on the screen centre; a pixel's blur
+// radius (circle of confusion) scales with how far its depth is from that focus
+// plane. The blur is a 16-tap golden-angle disk — a real separable blur would
+// need a second pass, which the single-mainImage pass can't do. UI (depth 0:
+// HUD, weapon, text) stays sharp. Tunable: FOCUS_RANGE (map units to full blur)
+// and MAX_RADIUS (px).
+export const dof: PostEffect = {
+  name: 'depth of field',
+  author: 'Claude',
+  wgsl: `fn mainImage(fragCoord: vec2f) -> vec4f {
+    let res = U.iResolution.xy;
+    let uv = fragCoord / res;
+    let d = iDepth0(uv);
+    if (d < 1.0) { return iColor0(uv); }               // UI: keep sharp
+    let focus = iDepth0(vec2f(0.5, 0.5));              // autofocus on the centre
+    let coc = clamp(abs(d - focus) / 500.0, 0.0, 1.0); // FOCUS_RANGE = 500
+    let radius = coc * 10.0;                            // MAX_RADIUS = 10 px
+    if (radius < 0.5) { return iColor0(uv); }
+    var sum = vec3f(0.0);
+    for (var i = 0; i < 16; i = i + 1) {
+      let r = sqrt((f32(i) + 0.5) / 16.0) * radius;    // uniform disk
+      let a = f32(i) * 2.3999632;                       // golden angle
+      sum = sum + iColor0(uv + vec2f(cos(a), sin(a)) * r / res).rgb;
+    }
+    return vec4f(sum / 16.0, 1.0);
+  }`,
+  glsl: `void mainImage(out vec4 col, in vec2 fc) {
+    vec2 res = iResolution.xy;
+    vec2 uv = fc / res;
+    float d = iDepth0(uv);
+    if (d < 1.0) { col = iColor0(uv); return; }        // UI: keep sharp
+    float focus = iDepth0(vec2(0.5, 0.5));             // autofocus on the centre
+    float coc = clamp(abs(d - focus) / 500.0, 0.0, 1.0);
+    float radius = coc * 10.0;
+    if (radius < 0.5) { col = iColor0(uv); return; }
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < 16; i++) {
+      float r = sqrt((float(i) + 0.5) / 16.0) * radius;
+      float a = float(i) * 2.3999632;
+      sum += iColor0(uv + vec2(cos(a), sin(a)) * r / res).rgb;
+    }
+    col = vec4(sum / 16.0, 1.0);
+  }`,
+};

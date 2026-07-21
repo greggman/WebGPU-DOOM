@@ -49,6 +49,26 @@ to this port.
   a speed difference might matter a lot so it might pay off to
   ask your AI of choice to make a custom solution for your project.
 
+You might think using a framework brings battle tested solutions.
+That might be right. At the same time, Claude, and probably other AIs,
+so far go way beyond what I'd normally do to test. In most of my 3D
+work I just edit and then run and see if it looks good. Claude though,
+will easily write much more detailed and comprehensive tests.
+
+As one example it found that keys were ignored. It fixed the bug
+and that's where I might have stopped if I was doing it myself.
+But Claude ran all the demo recordings to see if fixing it broke
+any demo. Then it checked doors don't open without the key and they
+do with. I might have checked that 2nd one by hand but in a past
+life I'd have been unlikely to check the first and would have just
+waited for bug reports.
+
+That kind thing is common. Use a library, maybe get frustum culling.
+But ask claude to add it and you get both frustum culling and
+comprehensive tests that it works. The point being again, maybe
+reaching for a library is not as compelling as it used to be in this
+new AI world.
+
 ## Prompting Details
 
 Mostly I just made a folder with the source to doom in a sub-folder.
@@ -74,14 +94,19 @@ and use esbuild to build it.
 3. Build C version to compare for audio
 
    It spent several hours trying to get the music correct. At one point it wrote
-   out .WAV files and asked me to listen. Even though it got better things will
-   still not right so I told it output the audio from the C version
+   out .WAV files and asked me to listen. Even though it got better things it was
+   still not right. So I told it output the audio from the C version
    and compare. Even this did't fix it.
 
    This particular part took way too long. AFAICT it's still not
-   perfect but it's good enough and we moved on, though I did suggest
-   building DOSBOX and running the C code in it and outputting the
-   audio. Claude thought that was a good idea.
+   perfect but it's good enough and we moved on. The issue is it's
+   writing it's own emulator for hardware that DOOM ran on. The code
+   for that emulation is not in the DOOM code.
+
+   I did suggest building DOSBox and running the C code in it and
+   outputting the audio as that would provide working emu for the hardware.
+   Claude thought that was a good idea but since it was working good enough
+   we moved on.
 
 4. Small things that were hacked by Claude
 
@@ -90,19 +115,19 @@ and use esbuild to build it.
      Claude hacked together the level map. I don't know how it's
      implemented in DOOM but I'm guessing it just works by marking
      which segments are rendered since DOOM's software renderer
-     works by never over-drawing, they know exactly that the user
+     works by never over-drawing, they know exactly what the user
      can see. This is as opposed to triangle renderers which often
      use z-buffers and which any results are still on the GPU.
 
-     Claude added it but didn't take into account that you should
-     not be able to see behind doors. It further didn't know that
-     the map doesn't fill in while viewing it. I only bring this up
-     because, assuming it was going from the original code, it seems
-     like these things should be encoded in that code. It's interesting
-     that apparently Claude just imagined how it worked and made up
-     it's own solutions. Or else maybe it looked at the original code
-     but just enough to get an idea how to draw a map, not its specific
-     behavior.
+     Claude added it but didn't take into account that you should not be able to
+     see behind doors. It further didn't know that the map doesn't fill in while
+     viewing it. I only bring this up because, assuming it was going from the
+     original code, it seems like these things should be encoded in that code. I
+     guess part of that is probably coming from the renderer which is not copied
+     so maybe it makes sense. It's interesting that apparently Claude just
+     imagined how it worked and made up it's own solutions. Or else maybe it
+     looked at the original code but just enough to get an idea how to draw a
+     map, not its specific behavior.
 
    * Intermission
 
@@ -144,6 +169,9 @@ and use esbuild to build it.
      pointed Claude at it and it was able to make a repo and work through the
      seam issue.
 
+     From that point on it started using screenshots to check all kinds of
+     things. That suggests it's good to get screenshots working ASAP.
+
 ## WebGL2
 
 Why a WebGL2 version - Because WebGPU is still only around 70% coverage. But,
@@ -151,7 +179,7 @@ the important part to take away I think is, when the WebGPU version was finished
 I asked Claude to port it to WebGL2. It was less than 15 minutes until it was
 rendering the world and the sky. Another 15 minutes to separate the WebGPU parts
 from main.ts into an API agnostic renderer.ts. A final 15 minutes to update the
-WebGL side to be fully working. The point again, being that AI can just do these
+WebGL side to be fully working. The point again being that AI can just do these
 things we used to use a library for.
 
 Interestingly, since we had already setup rendering via Puppeteer it used

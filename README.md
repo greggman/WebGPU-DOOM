@@ -1,14 +1,17 @@
 # WebGPU-DOOM
 
+<img src="screenshots/combo.png">
+
 Ported by Claude
 
-[Live](https://greggman.github.io/WebGPU-DOOM)
+[WebGPU With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess.html?pp=blueprint)
 
-[With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess.html)
-
-[WebGL2 version](https://greggman.github.io/WebGPU-DOOM/index-webgl2.html?pp=blueprint) [See below](#webgl2)
+[WebGPU Base Version](https://greggman.github.io/WebGPU-DOOM)
 
 [WebGL2 With Post Processing](https://greggman.github.io/WebGPU-DOOM/index-postprocess-webgl2.html?pp=blueprint)
+
+[WebGL2 Base Version](https://greggman.github.io/WebGPU-DOOM/index-webgl2.html?pp=blueprint) [See below](#webgl2)
+
 
 ## Why?
 

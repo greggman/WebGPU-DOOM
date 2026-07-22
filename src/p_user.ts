@@ -7,11 +7,14 @@ import { P_SetMobjState } from './p_mobj.js';
 import { S, MF } from './info.js';
 import { P_UseLines } from './p_map.js';
 import { P_MovePsprites } from './p_pspr.js';
+import { R_PointToAngle2 } from './r_point.js';
 
 /** tables.h — a BAM quarter turn. */
 export const ANG90 = 0x40000000;
 export const ANG180 = 0x80000000;
 export const ANG45 = 0x20000000;
+/** p_user.c P_DeathThink: ANG90/18, the per-tic turn toward the killer. */
+const ANG5 = (ANG90 / 18) | 0;
 
 /** p_user.c: 16 pixels of bob. */
 const MAXBOB = 0x100000;
@@ -115,9 +118,42 @@ export function P_CalcHeight(player: PPlayer, levelTime: number): void {
 export const BT_ATTACK = 1;
 export const BT_USE = 2;
 
+/**
+ * P_DeathThink. While dead the weapon lowers, the camera sinks to 6 units off
+ * the floor, and the view turns to face whoever killed you — fading the damage
+ * flash once it's looking at them. Respawn (USE) is handled by the game loop.
+ */
+export function P_DeathThink(player: PPlayer, levelTime: number): void {
+  const mo = player.mo!;
+  P_MovePsprites(player); // the weapon lowers off-screen (A_WeaponReady sees no health)
+
+  // Fall to the ground.
+  if (player.viewHeight > 6 * FRACUNIT) player.viewHeight = (player.viewHeight - FRACUNIT) | 0;
+  if (player.viewHeight < 6 * FRACUNIT) player.viewHeight = 6 * FRACUNIT;
+  player.deltaViewHeight = 0;
+  onGround = mo.z <= mo.floorZ;
+  P_CalcHeight(player, levelTime);
+
+  // Turn to face the attacker, ANG5 per tic, snapping when nearly aligned.
+  if (player.attacker && player.attacker !== mo) {
+    const angle = R_PointToAngle2(mo.x, mo.y, player.attacker.x, player.attacker.y);
+    const delta = (angle - mo.angle) >>> 0;
+    if (delta < ANG5 || delta > ((-ANG5) >>> 0)) {
+      mo.angle = angle;
+      if (player.damageCount) player.damageCount--;
+    } else if (delta < ANG180) {
+      mo.angle = (mo.angle + ANG5) >>> 0;
+    } else {
+      mo.angle = (mo.angle - ANG5) >>> 0;
+    }
+  } else if (player.damageCount) {
+    player.damageCount--;
+  }
+}
+
 /** P_PlayerThink. */
 export function P_PlayerThink(player: PPlayer, levelTime: number): void {
-  if (player.state === PST_DEAD) return; // P_DeathThink
+  if (player.state === PST_DEAD) { P_DeathThink(player, levelTime); return; }
 
   // reactiontime freezes the player briefly after a teleport — they arrive
   // stunned. Without this you can walk straight back into the teleporter.

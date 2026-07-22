@@ -122,3 +122,47 @@ export const dof: PostEffect = {
     col = vec4(sum / 16.0, 1.0);
   }`,
 };
+
+// Ink-on-paper sketch. Same depth+normal edge detector as `outline`, but the
+// edges become dark ink over a washed-out paper tone (colour muted toward white)
+// while the far plane / sky reads as blank paper.
+export const sketch: PostEffect = {
+  name: 'Sketch',
+  author: 'Claude',
+  wgsl: `fn mainImage(fragCoord: vec2f) -> vec4f {
+    let uv = fragCoord / U.iResolution.xy;
+    let px = 3.0 / U.iResolution.xy;   // 3px reach -> thicker ink lines
+    let d0 = iDepth0(uv);
+    let n0 = normalize(iNormal0(uv));
+    var e = 0.0;
+    var o = array(vec2f(px.x,0.0), vec2f(-px.x,0.0), vec2f(0.0,px.y), vec2f(0.0,-px.y));
+    for (var i = 0; i < 4; i = i + 1) {
+      e = e + abs(iDepth0(uv + o[i]) - d0) / max(d0, 1.0);
+      e = e + (1.0 - clamp(dot(normalize(iNormal0(uv + o[i])), n0), 0.0, 1.0));
+    }
+    let ink = smoothstep(0.35, 0.7, e);
+    let c = iColor0(uv).rgb;
+    let d = iDepth01(uv);
+    if (d >= 1.0) { return vec4f(1.0); }               // far plane / sky = blank paper
+    return vec4f(mix(mix(c.ggg, vec3f(1.0), 0.8), c, ink), 1.0);
+  }`,
+  glsl: `void mainImage(out vec4 col, in vec2 fc) {
+    vec2 uv = fc / iResolution.xy;
+    vec2 px = 3.0 / iResolution.xy;
+    float d0 = iDepth0(uv);
+    vec3 n0 = normalize(iNormal0(uv));
+    vec2 o[4];
+    o[0] = vec2(px.x, 0.0); o[1] = vec2(-px.x, 0.0);
+    o[2] = vec2(0.0, px.y); o[3] = vec2(0.0, -px.y);
+    float e = 0.0;
+    for (int i = 0; i < 4; i++) {
+      e += abs(iDepth0(uv + o[i]) - d0) / max(d0, 1.0);
+      e += 1.0 - clamp(dot(normalize(iNormal0(uv + o[i])), n0), 0.0, 1.0);
+    }
+    float ink = smoothstep(0.35, 0.7, e);
+    vec3 c = iColor0(uv).rgb;
+    float d = iDepth01(uv);
+    if (d >= 1.0) { col = vec4(1.0); return; }          // far plane / sky = blank paper
+    col = vec4(mix(mix(c.ggg, vec3(1.0), 0.8), c, ink), 1.0);
+  }`,
+};

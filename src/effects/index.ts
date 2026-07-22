@@ -3,7 +3,7 @@
 // collection (WGSL now; GLSL kept for the WebGL2 backend).
 
 import type { PostEffect } from './effect.js';
-import { passthrough, showNormals, showDepth, outline, dof } from './gbuffer.js';
+import { passthrough, showNormals, showDepth, outline, dof, sketch } from './gbuffer.js';
 import { blueprint, crt, vhs, halftone, grayscale, posterize, pixelate } from './claude.js';
 import { mattiasCRT } from './mattias-crt.js';
 import { distortedTV } from './distorted-tv.js';
@@ -22,6 +22,7 @@ export const EFFECTS: PostEffect[] = [
   showDepth,
   outline,
   dof,
+  sketch,
   blueprint,
   crt,
   vhs,

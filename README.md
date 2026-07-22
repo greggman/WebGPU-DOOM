@@ -35,13 +35,14 @@ to this port.
 
 * Three.js is a generic 3d library which has almost zero relation to what is
   needed to port DOOM. As such, three-doom is 600k larger (minified), (150k
-  larger gzipped). 2.4x larger than this port (289k vs 122k). It's also 2x to 3x
-  slower. (*) Maybe neither of those matter or maybe more iterations would
-  change that. A few hundred kilobytes more or even a 3x speed difference means
-  nothing to DOOM in 2026 as the entire game only renders around 800 - 1600
-  triangles a frame. Compare to a modern AAA game that might draw 5 to 10
-  million triangles per frame. 4-5 orders of magnitude more. Further, the data
-  itself, `DOOM1.WAD` is 4meg and so out shadows any JavaScript size.
+  larger gzipped). 2.4x larger than this port (289k vs 122k). It also appears
+  to be 2x to 3x slower. (*) Maybe neither of those matter or maybe more
+  iterations would  change that. A few hundred kilobytes more or even a 3x
+  speed difference means nothing to DOOM in 2026 as the entire game only
+  renders around 800 - 1600 triangles a frame. Compare to a modern AAA game
+  that might draw 5 to 10 million triangles per frame. 4-5 orders of magnitude
+  more. Further, the data itself, `DOOM1.WAD` is 4meg and so out shadows any
+  JavaScript size.
 
   What that means is it doesn't matter that a framework is slower
   or larger for this specific port. That said, if you're making

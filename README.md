@@ -67,7 +67,10 @@ That kind thing is common. Use a library, maybe get frustum culling.
 But ask claude to add it and you get both frustum culling and
 comprehensive tests that it works. The point being again, maybe
 reaching for a library is not as compelling as it used to be in this
-new AI world.
+new AI world. You can see another example in [sedon](https://github.com/greggman/sedon).
+That project also didn't use a library. I just asked for each needed
+feature (rayleigh scattering, bloom, frustum based grass, dynamically
+lodded terrain, etc...) and the AI just made it.
 
 ## Prompting Details
 

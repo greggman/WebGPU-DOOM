@@ -30,8 +30,8 @@ to this port.
 
 * I'm guessing they took the same amount of prompting. It didn't 
   take that long to get DOOM running in WebGPU. Maybe 3 hours.
-  It took longer to find a few bugs but none of those bugs were
-  anywhere need the graphics code.
+  It took longer to find a few bugs but almost none of those bugs were
+  anywhere near the graphics code.
 
 * Three.js is a generic 3d library which has almost zero relation to what is
   needed to port DOOM. As such, three-doom is 600k larger (minified), (150k
@@ -51,13 +51,13 @@ to this port.
 
 You might think using a framework brings battle tested solutions.
 That might be right. At the same time, Claude, and probably other AIs,
-so far go way beyond what I'd normally do to test. In most of my 3D
+so far, go way beyond what I'd normally do to test. In most of my 3D
 work I just edit and then run and see if it looks good. Claude though,
 will easily write much more detailed and comprehensive tests.
 
-As one example it found that keys were ignored. It fixed the bug
+As one example it found that keys for doors were ignored. It fixed the bug
 and that's where I might have stopped if I was doing it myself.
-But Claude ran all the demo recordings to see if fixing it broke
+But, Claude ran all the demo recordings to see if fixing it broke
 any demo. Then it checked doors don't open without the key and they
 do with. I might have checked that 2nd one by hand but in a past
 life I'd have been unlikely to check the first and would have just
@@ -71,7 +71,7 @@ new AI world.
 
 ## Prompting Details
 
-Mostly I just made a folder with the source to doom in a sub-folder.
+Mostly I just made a folder with the source to DOOM in a sub-folder.
 I asked Claude to convert it to TypeScript and WebGPU with no libraries
 and use esbuild to build it.
 
@@ -88,19 +88,19 @@ and use esbuild to build it.
 2. Built C version to compare for demo.
 
    When it couldn't figure out the demo sync issues it finally
-   build the C version with no graphics and added a lot of logging
+   built the C version with no graphics and added a lot of logging
    so it could compare one to the other exactly.
 
 3. Build C version to compare for audio
 
    It spent several hours trying to get the music correct. At one point it wrote
-   out .WAV files and asked me to listen. Even though it got better things it was
+   out .WAV files and asked me to listen. Even though it got better, it was
    still not right. So I told it output the audio from the C version
    and compare. Even this did't fix it.
 
    This particular part took way too long. AFAICT it's still not
    perfect but it's good enough and we moved on. The issue is it's
-   writing it's own emulator for hardware that DOOM ran on. The code
+   writing its own emulator for hardware that DOOM ran on. The code
    for that emulation is not in the DOOM code.
 
    I did suggest building DOSBox and running the C code in it and
@@ -180,9 +180,9 @@ I asked Claude to port it to WebGL2. It was less than 15 minutes until it was
 rendering the world and the sky. Another 15 minutes to separate the WebGPU parts
 from main.ts into an API agnostic renderer.ts. A final 15 minutes to update the
 WebGL side to be fully working. The point again being that AI can just do these
-things we used to use a library for.
+things we used to use a library for and/or which used to be a lot of work.
 
-Interestingly, since we had already setup rendering via Puppeteer it used
+Interestingly, since we had already setup rendering via Puppeteer, it used
 that to check things were working. Something it didn't do when building
 the original.
 
@@ -191,8 +191,8 @@ the original.
 Again, ask and ye shall receive. I asked Claude to add post processing. I gave it a list of effects. 20 minutes later
 I had examples of post processing. I pointed it at
 [pico-8-post-processing](https://github.com/greggman/pico-8-post-processing), and told it to copy and adapt
-some of the shaders, and keep the credits, and a 15 minutes
-later that was in.
+some of the shaders, and keep the credits, and 15 minutes
+later that was in too.
 
 <img width="400" src="screenshots/d-01.png">
 <img width="400" src="screenshots/d-02.png">

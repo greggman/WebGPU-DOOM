@@ -1,7 +1,7 @@
 import type { PostEffect } from './effect.js';
 
-// The original samples a repeating noise texture (iChannel1); the WGSL port
-// replaces it with a value-noise hash so no extra texture is needed.
+// The original samples a repeating noise texture (iChannel1); both ports replace
+// it with a procedural value-noise hash so no extra texture is needed.
 export const vcrDistortion: PostEffect = {
   name: 'VCR distortion',
   author: 'ryk',
@@ -59,8 +59,16 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   return vec4f(video, 1.0);
 }`,
   glsl: `
+float hash21(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// vnoise: procedural stand-in for the original's iChannel1 noise texture.
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f*f*(3.0 - 2.0*f);
+  return mix(mix(hash21(i), hash21(i+vec2(1.0,0.0)), u.x),
+             mix(hash21(i+vec2(0.0,1.0)), hash21(i+vec2(1.0,1.0)), u.x), u.y);
+}
 float noise(vec2 p) {
-  float s = texture2D(iChannel1,vec2(1.,2.*cos(iTime))*iTime*8. + p*1.).x;
+  float s = vnoise(vec2(1.,2.*cos(iTime))*iTime*8. + p);
   s *= s;
   return s;
 }

@@ -8,7 +8,6 @@ import { blueprint, crt, vhs, halftone, grayscale, posterize, pixelate } from '.
 import { mattiasCRT } from './mattias-crt.js';
 import { distortedTV } from './distorted-tv.js';
 import { vcrDistortion } from './vcr-distortion.js';
-import { oldTVEffect } from './old-tv-effect.js';
 import { glitch2 } from './glitch2.js';
 import { bugInTheTV } from './bug-in-the-tv.js';
 import { ledDisplay } from './led-display.js';
@@ -33,7 +32,6 @@ export const EFFECTS: PostEffect[] = [
   mattiasCRT,
   distortedTV,
   vcrDistortion,
-  oldTVEffect,
   glitch2,
   bugInTheTV,
   ledDisplay,

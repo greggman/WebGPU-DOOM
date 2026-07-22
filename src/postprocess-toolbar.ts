@@ -47,14 +47,24 @@ export function wirePostProcessToolbar(canvas: HTMLCanvasElement, pp: PostProces
   choose(wanted && byName.has(wanted) ? wanted : pp.current(), false);
   sel.addEventListener('change', () => { choose(sel.value, true); canvas.focus(); });
 
-  // iMouse: device-pixel cursor + button, matching fragCoord space.
+  // iMouse: device-pixel cursor + button, for mouse and touch alike.
+  // `touch-action: none` stops the browser claiming a finger DRAG as scroll/zoom
+  // (which fires pointercancel and cuts off pointermove); pointer capture keeps
+  // events flowing if the finger/cursor leaves the canvas.
+  canvas.style.touchAction = 'none';
   const dpr = (): number => Math.min(window.devicePixelRatio, 2);
   let down = false;
   const move = (e: PointerEvent): void => {
     const r = canvas.getBoundingClientRect();
     pp.setMouse((e.clientX - r.left) * dpr(), (e.clientY - r.top) * dpr(), down);
   };
+  const release = (e: PointerEvent): void => { down = false; move(e); };
   canvas.addEventListener('pointermove', move);
-  canvas.addEventListener('pointerdown', (e) => { down = true; move(e); });
-  addEventListener('pointerup', () => { down = false; });
+  canvas.addEventListener('pointerdown', (e) => {
+    down = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+    move(e);
+  });
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
 }

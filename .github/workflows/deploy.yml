@@ -52,6 +52,10 @@ jobs:
              doom1.wad \
              _site/
           cp -r dist _site/dist
+          # Copy the whole texture/ tree (post-process iChannel URLs load from
+          # here, e.g. the chrome cubemap) so new textures ship without editing
+          # this list.
+          cp -r texture _site/texture
           touch _site/.nojekyll   # serve files as-is, no Jekyll processing
 
       - uses: actions/upload-pages-artifact@v3

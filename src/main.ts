@@ -5,6 +5,7 @@
 import { Wad } from './wad.js';
 import { runGame } from './game.js';
 import { createWebGPUBackend } from './webgpu/backend.js';
+import { isWebGPUUnavailable, showWebGPUFallback } from './webgpu-fallback.js';
 
 const WAD_URL = './doom1.wad';
 
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  if (isWebGPUUnavailable(err)) { showWebGPUFallback('./index-webgl2.html'); return; }
   document.body.innerHTML = `<pre style="color:#f44;padding:1rem;white-space:pre-wrap">${err}\n\n${(err as Error).stack ?? ''}</pre>`;
   console.error(err);
 });

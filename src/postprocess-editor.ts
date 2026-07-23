@@ -118,6 +118,17 @@ export function wirePostProcessEditor(canvas: HTMLCanvasElement, pp: PostProcess
   const sel = document.querySelector<HTMLSelectElement>('#pp');
   if (!editBtn || !host || !saveBtn || !statusEl || !errorsEl || !splitter || !stage || !sel) return;
 
+  // Pause button: freezes the sim (via the game's global control) so the render
+  // can be inspected against the shader editor. Optional — absence is harmless.
+  const pauseBtn = document.querySelector<HTMLButtonElement>('#pausebtn');
+  pauseBtn?.addEventListener('click', () => {
+    const game = (window as unknown as { __game?: { togglePause(): boolean } }).__game;
+    if (!game) return;
+    const nowPaused = game.togglePause();
+    pauseBtn.textContent = nowPaused ? 'resume' : 'pause';
+    pauseBtn.classList.toggle('paused', nowPaused);
+  });
+
   let editor: Editor | null = null;
   let programmatic = false;   // suppress onChange during programmatic setText
   let timer = 0;

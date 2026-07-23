@@ -563,6 +563,10 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
   let texTrans = new Uint32Array(0);
   // Identifies "which screen" we're showing; when it changes, melt to the new one.
   let lastScreenKey = '';
+  // Pause freezes the sim (no tics advance) while still rendering each frame, so a
+  // frozen pose can be inspected — handy against the post-process shader editor.
+  // Toggled via the global below (the post-process toolbar's pause button).
+  let paused = false;
   // Transient pickup/HUD message shown at the top of the screen (HU_MSGTIMEOUT).
   let hudMsg = '';
   let hudMsgTimer = 0;
@@ -599,7 +603,9 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
     // Freeze the world while a screen melt is playing (DOOM suspends the game
     // during the wipe), so the new screen holds on its first frame as it's
     // revealed. Drain the accumulator so it doesn't fast-forward on resume.
-    if (renderer.isMelting()) {
+    if (paused) {
+      accumulator = 0; // frozen by the pause button: render but don't advance the sim
+    } else if (renderer.isMelting()) {
       accumulator = 0;
     } else if (mode === 'finale') {
       accumulator = 0; // frozen; wait for a key
@@ -818,6 +824,14 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
 
   advanceDemo(); // start on the title screen, then cycle demos (DOOM's attract loop)
   requestAnimationFrame(frame);
+
+  // Pause control for the post-process toolbar. Always exposed (not ?dev-gated),
+  // since pausing to inspect the render is a normal user action.
+  (globalThis as Record<string, unknown>).__game = {
+    togglePause(): boolean { paused = !paused; return paused; },
+    setPaused(v: boolean): void { paused = v; },
+    isPaused(): boolean { return paused; },
+  };
 
   if (devParams.has('dev')) {
     // Headless test hook: load a map and place the player at an exact pose, so a

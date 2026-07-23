@@ -17,6 +17,7 @@ import { matrix } from './matrix.js';
 import { crosshatch } from './crosshatch.js';
 import { chtest } from './chtest.js';
 import { spriteId } from './spriteid.js';
+import { envmap } from './envmap.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -46,5 +47,6 @@ export const EFFECTS: PostEffect[] = [
   matrix,
   crosshatch,
   spriteId,
+  envmap,
   chtest,
 ];

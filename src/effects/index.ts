@@ -18,6 +18,7 @@ import { crosshatch } from './crosshatch.js';
 import { chtest } from './chtest.js';
 import { spriteId } from './spriteid.js';
 import { envmap } from './envmap.js';
+import { ssao } from './ssao.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -48,5 +49,6 @@ export const EFFECTS: PostEffect[] = [
   crosshatch,
   spriteId,
   envmap,
+  ssao,
   chtest,
 ];

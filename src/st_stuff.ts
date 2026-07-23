@@ -149,6 +149,15 @@ export function buildStatusBar(player: PPlayer): Quad[] {
   // Face.
   quads.push({ name: faceLump(player), x: 143, y: 168 });
 
+  // Per-type ammo counts on the far right, small yellow font: current amount
+  // (right edge x=288) and maximum (x=314). Rows are keyed by ammotype but the
+  // y's place them as BULL / SHEL / RCKT / CELL (bullets, shells, rockets, cells).
+  const ammoY = [173, 179, 191, 185]; // indexed by ammo type (0..3)
+  for (let t = 0; t < 4; t++) {
+    drawNum(quads, player.ammo[t], 288, ammoY[t], 'STYSNUM', 4);
+    drawNum(quads, player.maxAmmo[t], 314, ammoY[t], 'STYSNUM', 4);
+  }
+
   // Keys: blue/yellow/red down the right edge.
   const keyY = [171, 181, 191];
   for (let i = 0; i < 3; i++) {

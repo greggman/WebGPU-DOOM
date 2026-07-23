@@ -19,7 +19,8 @@ export function wirePostProcessToolbar(canvas: HTMLCanvasElement, pp: PostProces
 
   const byName = new Map<string, PostEffectInfo>();
   for (const info of pp.effects) {
-    byName.set(info.name, info);
+    byName.set(info.name, info); // in byName (so ?pp=<name> works) even when hidden
+    if (info.hidden) continue;   // ...but kept out of the dropdown
     const o = document.createElement('option');
     o.value = info.name; o.textContent = info.name;
     sel.appendChild(o);

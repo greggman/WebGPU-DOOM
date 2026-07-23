@@ -23,6 +23,8 @@ export interface ShaderError {
   line: number;
   col: number;
   message: string;
+  /** 'compile' (default) for shader errors, 'resource' for iChannel load failures. */
+  kind?: 'compile' | 'resource';
 }
 
 /** Attribution shown in the post-process toolbar. */
@@ -33,6 +35,8 @@ export interface PostEffectInfo {
   src?: string;
   license?: string;
   licenseUrl?: string;
+  /** Selectable via ?pp=<name> but omitted from the toolbar dropdown. */
+  hidden?: boolean;
 }
 
 /** Runtime control of the post-process filter (index-postprocess.html). Present

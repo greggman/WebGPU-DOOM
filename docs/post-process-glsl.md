@@ -34,6 +34,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 | `iTime`       | `float`| seconds since the page loaded                       |
 | `iFrame`      | `float`| frame counter                                       |
 | `iMouse`      | `vec4` | `.xy` = cursor in px, `.z` > 0 while a button is held |
+| `iCamPos`     | `vec3` | camera world position                               |
+| `iCamRight` / `iCamUp` / `iCamFwd` | `vec3` | camera basis (view matrix rows) |
+| `iTanHalfFovX` / `iTanHalfFovY` | `float` | `tan(fov/2)` per axis           |
+
+The camera uniforms exist so a filter can rebuild world position from depth; you
+rarely touch them directly — use `iWorldPos(uv)` below.
 
 ## Scene inputs (the G-buffer)
 
@@ -47,12 +53,22 @@ The scene colour is the sampler `iChannel0`; the normal/depth target is
 | `iNormal0(uv)`            | `vec3`  | world-space geometric normal               |
 | `iDepth0(uv)`             | `float` | **linear** view depth, in **map units**    |
 | `iDepth01(uv)`            | `float` | the same depth **normalized** to 0..1 (0 = eye, 1 = far clip) |
+| `iWorldPos(uv)`           | `vec3`  | world-space position of the surface (Y up) |
+| `iSprite(uv)`             | `float` | `1.0` on a billboard sprite (enemy/item), `0.0` on world geometry |
 
 Notes on the G-buffer:
 
 - **Normals** come from screen-space derivatives of world position, so floors and
   ceilings point roughly along ±Y and walls are horizontal. Sprites use a
-  camera-facing normal. The sky and the HUD write a zero normal.
+  camera-facing normal. The sky and the HUD write a zero normal. The geometric
+  normal's **sign is arbitrary**; flip it toward the camera before lighting it:
+  `if (dot(N, normalize(iCamPos - P)) < 0.0) N = -N;`.
+- **`iWorldPos`** reconstructs the surface point from depth + the camera, so you
+  can project things onto surfaces in world space (see `matrix`, `crosshatch`).
+  It's meaningless where there's no geometry (sky) or on UI (depth ~0) — gate with
+  `iDepth0`.
+- **`iSprite`** is a 2D/3D flag: sprites are camera-facing billboards, so their
+  normal is fake — use this to shade them differently.
 - **Depth is linear.** `iDepth0` is the real distance from the eye in map units —
   use it for anything range-based (DOF focus, fog), where a world distance is the
   natural unit. `iDepth01` is that value divided by the far clip (`20000`) and
@@ -65,8 +81,14 @@ Notes on the G-buffer:
 
 - `texture2D` is `#define`d to `texture`, and `mod()` / matrices / etc. are all
   standard GLSL ES 3.00.
-- A second scene texture (`iChannel1`) is **not** provided; the ported effects that
-  originally needed a noise/LUT texture inline a procedural equivalent instead.
+
+## Textures
+
+There's a built-in library of procedural noise/patterns — `iChan(iNoiseValue, uv)`
+and friends — and you can load your **own** textures (2D / array / cube / 3D) from
+URLs with a comment directive (`// iChannel1: url`), sampled Shadertoy-style with
+`texture()`. Both are covered in
+**[post-process-textures.md](post-process-textures.md)**.
 
 ## Examples
 

@@ -30,4 +30,6 @@ export interface PostEffect {
   /** Original GLSL body (Shadertoy `void mainImage(out vec4, in vec2)`), kept
    *  for the WebGL2 backend. Absent for DOOM-specific G-buffer effects. */
   glsl?: string;
+  /** Keep out of the toolbar dropdown, but still selectable via ?pp=<name>. */
+  hidden?: boolean;
 }

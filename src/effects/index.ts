@@ -14,6 +14,8 @@ import { ledDisplay } from './led-display.js';
 import { gameboyClassic } from './gameboy-classic.js';
 import { cmykHalftone } from './cmyk-halftone.js';
 import { matrix } from './matrix.js';
+import { crosshatch } from './crosshatch.js';
+import { chtest } from './chtest.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -40,4 +42,6 @@ export const EFFECTS: PostEffect[] = [
   gameboyClassic,
   cmykHalftone,
   matrix,
+  crosshatch,
+  chtest,
 ];

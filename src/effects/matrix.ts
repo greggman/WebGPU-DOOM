@@ -8,7 +8,7 @@ import type { PostEffect } from './effect.js';
 // along world-Z. Each column runs several independent streams, and brightness is
 // modulated by the scene's luma so lit surfaces glow (lit by the level's lights).
 //
-// Sprites (enemies, items, flagged via iSprite) are camera-facing billboards, so
+// Sprites (enemies, items, flagged via iSpriteCategory) are camera-facing billboards, so
 // instead of the geometric normal they get a forced vertical fall and render as a
 // glowing green figure with code streaming down it.
 //
@@ -99,7 +99,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   let P = iWorldPos(uv);
   let N = normalize(iNormal0(uv));
   let aN = abs(N);
-  let isSpr = iSprite(uv);
+  let isSpr = step(1.5, iSpriteCategory(uv));   // 1 on world sprites (category >= 2)
   // Surface frame. c = across, f = fall/flow. Sprites are billboards, so ignore
   // the fake normal and force a vertical fall down their world-space plane.
   var c = 0.0; var f = 0.0;
@@ -184,7 +184,7 @@ void mainImage( out vec4 fragColor, in vec2 fc ) {
   vec3 P = iWorldPos(uv);
   vec3 N = normalize(iNormal0(uv));
   vec3 aN = abs(N);
-  float isSpr = iSprite(uv);
+  float isSpr = step(1.5, iSpriteCategory(uv));   // 1 on world sprites (category >= 2)
   float c, f;
   if (isSpr > 0.5) { c = (P.x + P.z) * 0.7071; f = -P.y; }
   else if (aN.y >= aN.x && aN.y >= aN.z) { c = P.x; f = P.z; }

@@ -46,10 +46,12 @@ struct VsOut {
   @location(2) viewDepth  : f32,
   @location(3) @interpolate(flat) layer    : u32,
   @location(4) @interpolate(flat) shadow   : u32,   // MF_SHADOW: draw as fuzz
-  ${gb ? '@location(5) @interpolate(flat) normal : vec3f,' : ''}
+  ${gb ? '@location(5) @interpolate(flat) normal : vec3f, @location(6) @interpolate(flat) flags : u32,' : ''}
 };
 
-${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) uv2 : vec2f, };' : ''}
+// meta target (rgba16uint): .rg = uv * 65535, .b = mobj type, .a = category |
+// flip<<3 | rotation<<4. Read point-sampled in post-process (iSpriteType etc).
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) mval : vec4u, };' : ''}
 
 @vertex
 fn vs(in : VsIn) -> VsOut {
@@ -101,12 +103,12 @@ fn vs(in : VsIn) -> VsOut {
   out.viewDepth = clip.w;
   out.layer = u32(in.layer);
   out.shadow = (flags >> 1u) & 1u;
+  ${gb ? 'out.flags = flags;' : ''}
   // Billboard normal: horizontal, perpendicular to the sprite's world X axis
-  // (cam.right). A consistent facing so show-normals/outline treat sprites sanely.
-  // Stored at length = category (>= 2; world normals are unit) to flag sprites in
-  // the G-buffer; post-process reads it via iSprite / iSpriteId. Callers
-  // normalize, so direction is intact.
-  ${gb ? 'let sid = max(f32((flags >> 2u) & 7u), 2.0); out.normal = sid * normalize(cross(cam.right, vec3f(0.0, 1.0, 0.0)));' : ''}
+  // (cam.right), unit length. A consistent facing so show-normals / outline treat
+  // sprites sanely. (Sprite category/type/flip live in the meta target now, not
+  // in this normal's magnitude.)
+  ${gb ? 'out.normal = normalize(cross(cam.right, vec3f(0.0, 1.0, 0.0)));' : ''}
   return out;
 }
 
@@ -118,6 +120,8 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   let idx = textureLoad(atlas, texel, in.layer, 0);
 
   if (idx.g == 0u) { discard; }   // sprite cut-out
+
+  ${gb ? 'let _meta = vec4u(u32(clamp(in.uv.x, 0.0, 1.0) * 65535.0), u32(clamp(in.uv.y, 0.0, 1.0) * 65535.0), (in.flags >> 8u) & 255u, ((in.flags >> 2u) & 7u) | ((in.flags & 1u) << 3u) | (((in.flags >> 5u) & 7u) << 4u));' : ''}
 
   var row : i32;
   if (g.fixedMap >= 0) {
@@ -141,12 +145,12 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
     let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
     let p = vec2u(in.clip.xy);
     let shimmer = select(0.0, 0.18, ((p.x + p.y) & 1u) == 0u);
-    ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 0.34 + shimmer); o.nd = vec4f(in.normal, in.viewDepth); o.uv2 = in.uv; return o;' : 'return vec4f(rgb, 0.34 + shimmer);'}
+    ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 0.34 + shimmer); o.nd = vec4f(in.normal, in.viewDepth); o.mval = _meta; return o;' : 'return vec4f(rgb, 0.34 + shimmer);'}
   }
 
   let remap = textureLoad(colormap, vec2i(i32(idx.r), row), 0).r;
   let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
-  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(in.normal, in.viewDepth); o.uv2 = in.uv; return o;' : 'return vec4f(rgb, 1.0);'}
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(in.normal, in.viewDepth); o.mval = _meta; return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -202,7 +206,7 @@ export function createBillboardPass(device: GPUDevice, format: GPUTextureFormat,
               alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
             } },
             { format: gbufferFormat },
-            { format: 'rg16float' },
+            { format: 'rgba16uint' },
           ]
         : [{
             format,

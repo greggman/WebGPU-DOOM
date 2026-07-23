@@ -53,7 +53,8 @@ fn vs(@builtin(vertex_index) vi : u32, in : Inst) -> VsOut {
   return out;
 }
 
-${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) uv2 : vec2f, };' : ''}
+// meta target (rgba16uint): .rg = uv*65535, .b = 0, .a = category (SID_HUD/HUDNUM/WEAPON).
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) mval : vec4u, };' : ''}
 
 @fragment
 fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
@@ -62,7 +63,7 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   let idx = textureLoad(atlas, texel, in.layer, 0);
   if (idx.g == 0u) { discard; }   // patch transparency
   let rgb = textureLoad(palette, vec2i(i32(idx.r), i32(in.palRow)), 0).rgb;
-  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, f32(in.sid), 0.0, 0.0); o.uv2 = in.uv; return o;' : 'return vec4f(rgb, 1.0);'}
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 0.0); o.mval = vec4u(u32(in.uv.x * 65535.0), u32(in.uv.y * 65535.0), 0u, in.sid); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -155,7 +156,7 @@ export function createHud2D(
     },
     fragment: {
       module, entryPoint: 'fs',
-      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rg16float' }] : [{ format }],
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rgba16uint' }] : [{ format }],
     },
     primitive: { topology: 'triangle-list' },
     // The HUD shares the world's render pass, which has a depth attachment — so

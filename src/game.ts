@@ -540,10 +540,13 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
         instances[o + 1] = mo.z / FRACUNIT;
         instances[o + 2] = mapYToWorldZ(mo.y / FRACUNIT);
         instances[o + 3] = layer;
-        // flip field: bit 0 = mirrored, bit 1 = MF_SHADOW (spectre fuzz), bits
-        // 2-4 = G-buffer category (SID_*) for post-process recolouring.
+        // flags field (packed into a f32, all integer, < 2^24 so exact):
+        //   bit 0     = mirrored, bit 1 = MF_SHADOW (spectre fuzz)
+        //   bits 2-4  = G-buffer category (SID_*) for post-process recolouring
+        //   bits 5-7  = sprite rotation 0..7 (which of the 8 facings is shown)
+        //   bits 8-15 = mobj type (MT_*, ~0..137) for per-type effects
         const sid = mo.flags & MF.MF_COUNTKILL ? SID_ENEMY : mo.flags & MF.MF_SPECIAL ? SID_POWERUP : SID_EFFECT;
-        instances[o + 4] = (sf.flip[rot] ? 1 : 0) | ((mo.flags & MF.MF_SHADOW) ? 2 : 0) | (sid << 2);
+        instances[o + 4] = (sf.flip[rot] ? 1 : 0) | ((mo.flags & MF.MF_SHADOW) ? 2 : 0) | (sid << 2) | (rot << 5) | (mo.type << 8);
         instances[o + 5] = st.fullbright ? -1 : Math.max(0, Math.min(15, (mo.sector?.lightLevel ?? 255) >> 4));
         n++;
         mo = mo.snext;

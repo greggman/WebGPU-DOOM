@@ -212,6 +212,12 @@ later that was in too.
 <img width="400" src="screenshots/d-09.png">
 <img width="400" src="screenshots/d-10.png">
 
+### Editing Shaders
+
+You can click the "edit" button and edit any shader.
+Click "Save & Copy URL" and it will give you a URL you can share.
+Click the "?" icon for docs on the various inputs.
+
 # [LICENSE](LICENSE.md)
 
 ## Footnotes:

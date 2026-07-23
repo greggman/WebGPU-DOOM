@@ -49,7 +49,8 @@ fn vs(@builtin(vertex_index) i : u32) -> VsOut {
 
 const PI = 3.14159265359;
 
-${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) uv2 : vec2f, };' : ''}
+// meta target (rgba16uint): .rg = uv*65535, .b = 0, .a = 0 (sky: no category).
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) mval : vec4u, };' : ''}
 
 @fragment
 fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
@@ -76,7 +77,7 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
 
   // Full bright: no COLORMAP lookup at all, matching r_plane.c.
   let rgb = textureLoad(palette, vec2i(i32(idx.r), 0), 0).rgb;
-  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 20000.0); o.uv2 = vec2f(u, v); return o;' : 'return vec4f(rgb, 1.0);'}
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 20000.0); o.mval = vec4u(u32(u * 65535.0), u32(v * 65535.0), 0u, 0u); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -106,7 +107,7 @@ export function createSkyPass(device: GPUDevice, format: GPUTextureFormat, gbuff
     vertex: { module, entryPoint: 'vs' },
     fragment: {
       module, entryPoint: 'fs',
-      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rg16float' }] : [{ format }],
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rgba16uint' }] : [{ format }],
     },
     primitive: { topology: 'triangle-list' },
     // Depth test off, writes off: the sky lays down a background and level

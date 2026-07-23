@@ -31,7 +31,7 @@ struct Uniforms {
 @group(0) @binding(4) var iChannels : texture_2d_array<f32>;   // built-in noise/pattern library
 @group(0) @binding(5) var iChannelsSampler : sampler;          // repeat + mipmap
 @group(0) @binding(6) var iChannelSampler : sampler;           // repeat + mipmap, for iChannel1..N
-@group(0) @binding(7) var iChannelUV : texture_2d<f32>;        // per-surface texture uv.xy
+@group(0) @binding(7) var iChannelMeta : texture_2d<u32>;      // integer meta: uv*65535, type, category|flip<<3|rot<<4
 
 const iNoiseRGBA : i32 = 0;   // uncorrelated per-texel rgba white noise
 const iNoiseValue : i32 = 1;  // smooth grey value noise
@@ -42,19 +42,23 @@ fn iChan(layer: i32, uv: vec2f) -> vec4f { return textureSample(iChannels, iChan
 
 fn iColor0(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel0, iSampler, uv, 0.0); }
 fn iNormal0(uv: vec2f) -> vec3f { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz; }
-// 1 on billboard sprites (enemies, items), 0 on world geometry. Sprite normals
-// are stored at length 2, world normals at length 1; callers of iNormal0
-// normalize, so this magnitude flag is free.
-fn iSprite(uv: vec2f) -> f32 { return step(1.5, length(textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz)); }
-// Category of the surface at uv, recovered from the normal magnitude (see
-// src/spriteid.ts): 1 = world, 2 = enemy, 3 = powerup, 4 = effect, 5 = HUD,
-// 6 = HUD number, 7 = the player's weapon.
-fn iSpriteId(uv: vec2f) -> f32 { return round(length(textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz)); }
 fn iDepth0(uv: vec2f) -> f32 { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).w; }   // map units
 // Per-surface texture UV of the pixel at uv. Sprites/HUD read 0..1 across the
 // patch; world walls/floors read 0..1 within a tile (wrapped). Sky reads its
 // panorama u/v. Handy for aligning effects to a surface instead of the screen.
-fn iUV0(uv: vec2f) -> vec2f { return textureSampleLevel(iChannelUV, iSampler, uv, 0.0).xy; }
+// The meta target is integer + point-sampled (textureLoad) — ids never blend at
+// silhouettes. iUV0 decodes uv; the rest expose the packed per-sprite fields.
+fn iMeta(uv: vec2f) -> vec4u { return textureLoad(iChannelMeta, vec2i(uv * U.iResolution.xy), 0); }
+fn iUV0(uv: vec2f) -> vec2f { let m = iMeta(uv); return vec2f(f32(m.x), f32(m.y)) / 65535.0; }
+// mobj type (MT_*, e.g. 11 = imp, 1 = former human; 0 = world / HUD / sky).
+fn iSpriteType(uv: vec2f) -> f32 { return f32(iMeta(uv).z); }
+// category 1..7 (see src/spriteid.ts): 1 world, 2 enemy, 3 powerup, 4 effect,
+// 5 HUD, 6 HUD number, 7 weapon (0 = sky). Point-sampled, so crisp at edges.
+fn iSpriteCategory(uv: vec2f) -> f32 { return f32(iMeta(uv).w & 7u); }
+// 1 if the sprite graphic is horizontally mirrored for this facing, else 0.
+fn iSpriteFlip(uv: vec2f) -> f32 { return f32((iMeta(uv).w >> 3u) & 1u); }
+// which of the 8 view rotations (0..7) is shown for this sprite.
+fn iSpriteRotation(uv: vec2f) -> f32 { return f32((iMeta(uv).w >> 4u) & 7u); }
 fn iDepth01(uv: vec2f) -> f32 { return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }                 // 0 = eye, 1 = far clip
 // World-space position of the surface at uv, reconstructed from linear depth +
 // the camera basis. Y is up. Meaningless where there is no geometry (sky) or on
@@ -104,7 +108,7 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
     { binding: 4, visibility: FRAG, texture: { sampleType: 'float', viewDimension: '2d-array' } },
     { binding: 5, visibility: FRAG, sampler: { type: 'filtering' } },
     { binding: 6, visibility: FRAG, sampler: { type: 'filtering' } },
-    { binding: 7, visibility: FRAG, texture: { sampleType: 'float' } },
+    { binding: 7, visibility: FRAG, texture: { sampleType: 'uint' } },
   ];
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
   const uniforms = device.createBuffer({ size: U_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });

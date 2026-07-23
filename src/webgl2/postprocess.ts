@@ -21,6 +21,7 @@ const FS_HEADER = `#version 300 es
 precision highp float;
 precision highp sampler2DArray;
 precision highp sampler3D;
+precision highp usampler2D;
 #define texture2D texture
 uniform vec3 iResolution;
 uniform float iTime;
@@ -28,7 +29,7 @@ uniform float iFrame;
 uniform vec4 iMouse;
 uniform sampler2D iChannel0;    // scene colour
 uniform sampler2D iChannelND;   // normal.xyz + linear depth.w
-uniform sampler2D iChannelUV;   // per-surface texture uv.xy
+uniform highp usampler2D iChannelMeta;   // integer meta: uv*65535, type, category|flip<<3|rot<<4
 uniform vec3 iCamPos;
 uniform vec3 iCamRight;
 uniform vec3 iCamUp;
@@ -44,18 +45,18 @@ const int iCrosshatch = 3;  // cross-hatch tonal-art-map (ink where luma < texel
 vec4 iChan(int layer, vec2 uv){ return texture(iChannels, vec3(uv, float(layer))); }
 vec4 iColor0(vec2 uv){ return texture(iChannel0, uv); }        // == texture2D(iChannel0, uv)
 vec3 iNormal0(vec2 uv){ return texture(iChannelND, uv).xyz; }
-// 1 on billboard sprites (enemies, items), 0 on world geometry. Sprite normals
-// are stored at length 2, world normals at length 1; iNormal0 callers normalize.
-float iSprite(vec2 uv){ return step(1.5, length(texture(iChannelND, uv).xyz)); }
-// Category of the surface at uv, recovered from the normal magnitude (see
-// src/spriteid.ts): 1 = world, 2 = enemy, 3 = powerup, 4 = effect, 5 = HUD,
-// 6 = HUD number, 7 = the player's weapon.
-float iSpriteId(vec2 uv){ return floor(length(texture(iChannelND, uv).xyz) + 0.5); }
 float iDepth0(vec2 uv){ return texture(iChannelND, uv).w; }    // map units
 // Per-surface texture UV of the pixel at uv. Sprites/HUD read 0..1 across the
 // patch; world walls/floors read 0..1 within a tile (wrapped). Sky reads its
 // panorama u/v. Handy for aligning effects to a surface instead of the screen.
-vec2 iUV0(vec2 uv){ return texture(iChannelUV, uv).xy; }
+// Integer meta target, point-sampled (texelFetch) so ids never blend at edges.
+uvec4 iMeta(vec2 uv){ return texelFetch(iChannelMeta, ivec2(uv * iResolution.xy), 0); }
+vec2 iUV0(vec2 uv){ uvec4 m = iMeta(uv); return vec2(m.xy) / 65535.0; }
+float iSpriteType(vec2 uv){ return float(iMeta(uv).z); }        // MT_* (0 = world/HUD/sky)
+// category 1..7: 1 world, 2 enemy, 3 powerup, 4 effect, 5 HUD, 6 HUD num, 7 weapon (0 = sky).
+float iSpriteCategory(vec2 uv){ return float(iMeta(uv).w & 7u); }
+float iSpriteFlip(vec2 uv){ return float((iMeta(uv).w >> 3u) & 1u); }
+float iSpriteRotation(vec2 uv){ return float((iMeta(uv).w >> 4u) & 7u); }
 float iDepth01(vec2 uv){ return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }   // 0 = eye, 1 = far clip
 // World-space position of the surface at uv, reconstructed from linear depth +
 // the camera basis (Y up). Meaningless on sky (no geometry) or UI (depth ~0).
@@ -80,7 +81,7 @@ interface Locs {
   iMouse: WebGLUniformLocation | null;
   iChannel0: WebGLUniformLocation | null;
   iChannelND: WebGLUniformLocation | null;
-  iChannelUV: WebGLUniformLocation | null;
+  iChannelMeta: WebGLUniformLocation | null;
   iChannels: WebGLUniformLocation | null;
   iCamPos: WebGLUniformLocation | null;
   iCamRight: WebGLUniformLocation | null;
@@ -184,7 +185,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
       iMouse: gl.getUniformLocation(prog, 'iMouse'),
       iChannel0: gl.getUniformLocation(prog, 'iChannel0'),
       iChannelND: gl.getUniformLocation(prog, 'iChannelND'),
-      iChannelUV: gl.getUniformLocation(prog, 'iChannelUV'),
+      iChannelMeta: gl.getUniformLocation(prog, 'iChannelMeta'),
       iChannels: gl.getUniformLocation(prog, 'iChannels'),
       iCamPos: gl.getUniformLocation(prog, 'iCamPos'),
       iCamRight: gl.getUniformLocation(prog, 'iCamRight'),
@@ -296,7 +297,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colorTex); gl.uniform1i(cur.loc.iChannel0, 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ndTex); gl.uniform1i(cur.loc.iChannelND, 1);
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D_ARRAY, libTex); gl.uniform1i(cur.loc.iChannels, 2);
-      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, uvTex); gl.uniform1i(cur.loc.iChannelUV, 3);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, uvTex); gl.uniform1i(cur.loc.iChannelMeta, 3);
       // User channels (iChannel1..N) on units 4+; placeholder until loaded.
       cur.channels.forEach((c, i) => {
         const unit = 4 + i, target = gl[CHANNEL_TYPES[c.spec.kind].glTarget];

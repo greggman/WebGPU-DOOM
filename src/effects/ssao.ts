@@ -50,7 +50,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   ao = ao / f32(SAMPLES);
   let occ = pow(clamp(1.0 - ao * 2.4, 0.0, 1.0), 1.4);      // strength + contrast
 
-  let isSpr = iSprite(uv) > 0.5;
+  let isSpr = iSpriteCategory(uv) > 1.5;
   let col = iColor0(uv).rgb;
   if (isSpr) {
     let lum = dot(col, vec3f(0.299, 0.587, 0.114)); // luma
@@ -96,7 +96,7 @@ void mainImage(out vec4 fragColor, in vec2 fc) {
   ao /= float(SAMPLES);
   float occ = pow(clamp(1.0 - ao * 2.4, 0.0, 1.0), 1.4);
 
-  bool isSpr = iSprite(uv) > 0.5;
+  bool isSpr = iSpriteCategory(uv) > 1.5;
   vec3 col = iColor0(uv).rgb;
   if (isSpr) {
     float lum = dot(col, vec3(0.299, 0.587, 0.114)); // luma

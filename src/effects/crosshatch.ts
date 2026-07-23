@@ -89,7 +89,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   // Sprites are flat billboards; fake a domed normal from the sprite UV so they
   // hatch like rounded volumes (centre faces the camera, edges bow away).
   var Nsh = N;
-  if (iSprite(uv) > 0.5) {
+  if (iSpriteCategory(uv) > 1.5) {   // crisp, point-sampled sprite test (not the edge-smeared iSprite)
     let pc = (iUV0(uv) - vec2f(0.5, 0.5)) * 1.0;
     let z = sqrt(max(0.0, 1.0 - dot(pc, pc)));
     Nsh = normalize(U.iCamRight * pc.x - U.iCamUp * pc.y - U.iCamFwd * z);
@@ -199,7 +199,7 @@ void mainImage(out vec4 fragColor, in vec2 fc) {
   if (dot(N, normalize(iCamPos - P)) < 0.0) N = -N;
 
   vec3 Nsh = N;
-  if (iSprite(uv) > 0.5) {
+  if (iSpriteCategory(uv) > 1.5) {   // crisp, point-sampled sprite test (not the edge-smeared iSprite)
     vec2 pc = (iUV0(uv) - vec2(0.5)) * 1.0;
     float z = sqrt(max(0.0, 1.0 - dot(pc, pc)));
     Nsh = normalize(iCamRight * pc.x - iCamUp * pc.y - iCamFwd * z);

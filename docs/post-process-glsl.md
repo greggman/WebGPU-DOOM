@@ -54,7 +54,11 @@ The scene colour is the sampler `iChannel0`; the normal/depth target is
 | `iDepth0(uv)`             | `float` | **linear** view depth, in **map units**    |
 | `iDepth01(uv)`            | `float` | the same depth **normalized** to 0..1 (0 = eye, 1 = far clip) |
 | `iWorldPos(uv)`           | `vec3`  | world-space position of the surface (Y up) |
-| `iSprite(uv)`             | `float` | `1.0` on a billboard sprite (enemy/item), `0.0` on world geometry |
+| `iUV0(uv)`                | `vec2`  | per-surface texture UV (sprites/HUD 0..1; walls/floors 0..1 within a tile) |
+| `iSpriteCategory(uv)`     | `float` | `1` world, `2` enemy, `3` powerup, `4` effect, `5` HUD, `6` HUD number, `7` weapon (`0` sky) |
+| `iSpriteType(uv)`         | `float` | mobj type (`MT_*`, e.g. `11` = imp); `0` on world/HUD/sky |
+| `iSpriteFlip(uv)`         | `float` | `1` if the sprite graphic is mirrored for this facing, else `0` |
+| `iSpriteRotation(uv)`     | `float` | which of the 8 view rotations (0..7) the sprite shows |
 
 Notes on the G-buffer:
 
@@ -67,8 +71,10 @@ Notes on the G-buffer:
   can project things onto surfaces in world space (see `matrix`, `crosshatch`).
   It's meaningless where there's no geometry (sky) or on UI (depth ~0) — gate with
   `iDepth0`.
-- **`iSprite`** is a 2D/3D flag: sprites are camera-facing billboards, so their
-  normal is fake — use this to shade them differently.
+- **`iSpriteCategory` / `iSpriteType` / `iSpriteFlip` / `iSpriteRotation`** read a
+  point-sampled integer meta target, so they're exact (no blending at silhouettes).
+  Category ≥ 2 means a billboard sprite (whose normal is camera-facing/fake) — use
+  it to shade sprites differently, or `iSpriteType` for per-monster/-item effects.
 - **Depth is linear.** `iDepth0` is the real distance from the eye in map units —
   use it for anything range-based (DOF focus, fog), where a world distance is the
   natural unit. `iDepth01` is that value divided by the far clip (`20000`) and

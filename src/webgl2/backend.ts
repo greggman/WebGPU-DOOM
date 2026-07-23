@@ -29,7 +29,7 @@ import { SID_HUD } from '../spriteid.js';
 // for the post-process G-buffer, exactly like the WebGPU passes. `gb` off yields
 // the original single-output shaders so the plain page is unchanged.
 const gbDecl = (gb: boolean): string =>
-  gb ? 'layout(location=0) out vec4 fragColor; layout(location=1) out vec4 o_nd; layout(location=2) out vec2 o_uv;' : 'out vec4 fragColor;';
+  gb ? 'layout(location=0) out vec4 fragColor; layout(location=1) out vec4 o_nd; layout(location=2) out uvec4 o_meta;' : 'out vec4 fragColor;';
 
 const WORLD_VS = (gb: boolean): string => `#version 300 es
 layout(location=0) in vec3 a_pos; layout(location=1) in vec2 a_uv;
@@ -60,7 +60,7 @@ void main(){
     row=int(clamp((15.0-li)*4.0 + clamp(v_depth*(12.0/1024.0),0.0,12.0) - 12.0 - u_extralight*8.0,0.0,31.0)); }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
-  ${gb ? 'o_nd = vec4(nrm, v_depth); o_uv = fract(v_uv);' : ''}
+  ${gb ? 'o_nd = vec4(nrm, v_depth); o_meta = uvec4(uvec2(fract(v_uv) * 65535.0), 0u, 1u);' : ''}
 }`;
 
 const SKY_VS = `#version 300 es
@@ -79,7 +79,7 @@ void main(){
   float vv=clamp((100.0-dir.y*128.0)/128.0,0.0,1.0);
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(vec2(uu,vv)*sz),u_skyLayer),0).rg;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),0),0).rgb,1.0);
-  ${gb ? 'o_nd = vec4(0.0, 0.0, 0.0, 20000.0); o_uv = vec2(uu, vv);' : ''}
+  ${gb ? 'o_nd = vec4(0.0, 0.0, 0.0, 20000.0); o_meta = uvec4(uint(uu * 65535.0), uint(vv * 65535.0), 0u, 0u);' : ''}
 }`;
 
 const SPRITE_VS = (gb: boolean): string => `#version 300 es
@@ -88,7 +88,7 @@ layout(location=0) in vec3 a_pos; layout(location=1) in float a_layer;
 layout(location=2) in float a_flip; layout(location=3) in float a_light;
 uniform mat4 u_mvp; uniform vec3 u_camRight; uniform sampler2D u_texInfo;
 out vec2 v_uv; flat out float v_light; out float v_depth; flat out int v_layer; flat out int v_shadow;
-${gb ? 'flat out vec3 v_nrm;' : ''}
+${gb ? 'flat out vec3 v_nrm; flat out int v_meta; flat out int v_type;' : ''}
 void main(){
   vec4 info=texelFetch(u_texInfo,ivec2(int(a_layer),0),0);
   vec2 size=info.xy; float leftOff=info.z, topOff=info.w;
@@ -103,7 +103,7 @@ void main(){
   vec3 world=vec3(a_pos.x,0.0,a_pos.z)+u_camRight*x+vec3(0.0,y,0.0);
   vec4 c=u_mvp*vec4(world,1.0); gl_Position=c;
   v_uv=uv; v_light=a_light; v_depth=c.w; v_layer=int(a_layer); v_shadow=(flags>>1)&1;
-  ${gb ? 'float sid=max(float((flags>>2)&7),2.0); v_nrm=sid*normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}  // length = category (>=2) flags sprites (iSprite/iSpriteId)
+  ${gb ? 'v_nrm=normalize(cross(u_camRight, vec3(0.0,1.0,0.0))); v_meta=((flags>>2)&7) | ((flags&1)<<3) | (((flags>>5)&7)<<4); v_type=(flags>>8)&255;' : ''}  // unit normal; category/type/flip -> rgba16uint meta
 }`;
 
 const SPRITE_FS = (gb: boolean): string => `#version 300 es
@@ -111,7 +111,7 @@ precision highp float; precision highp int; precision highp usampler2DArray; pre
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_texInfo; uniform highp usampler2D u_colormap;
 uniform sampler2D u_palette; uniform int u_fixedMap; uniform int u_paletteRow; uniform float u_extralight;
 in vec2 v_uv; flat in float v_light; in float v_depth; flat in int v_layer; flat in int v_shadow; ${gbDecl(gb)}
-${gb ? 'flat in vec3 v_nrm;' : ''}
+${gb ? 'flat in vec3 v_nrm; flat in int v_meta; flat in int v_type;' : ''}
 void main(){
   vec2 size=texelFetch(u_texInfo,ivec2(v_layer,0),0).xy;
   ivec2 texel=ivec2(clamp(v_uv*size,vec2(0.0),size-vec2(1.0)));
@@ -127,11 +127,11 @@ void main(){
     vec3 rgb=texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb;
     ivec2 p=ivec2(gl_FragCoord.xy);
     float shimmer=((p.x+p.y)&1)==0?0.18:0.0;
-    fragColor=vec4(rgb,0.34+shimmer); ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_uv=v_uv;' : ''} return;
+    fragColor=vec4(rgb,0.34+shimmer); ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_meta=uvec4(uvec2(clamp(v_uv,0.0,1.0)*65535.0), uint(v_type), uint(v_meta));' : ''} return;
   }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
-  ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_uv=v_uv;' : ''}
+  ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_meta=uvec4(uvec2(clamp(v_uv,0.0,1.0)*65535.0), uint(v_type), uint(v_meta));' : ''}
 }`;
 
 const HUD_VS = `#version 300 es
@@ -157,7 +157,7 @@ void main(){
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(v_uv*size),v_layer),0).rg;
   if(idx.g==0u) discard;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),v_palRow),0).rgb,1.0);
-  ${gb ? 'o_nd=vec4(0.0,float(v_sid),0.0,0.0); o_uv=v_uv;' : ''}
+  ${gb ? 'o_nd=vec4(0.0,0.0,0.0,0.0); o_meta=uvec4(uvec2(clamp(v_uv,0.0,1.0)*65535.0), 0u, uint(v_sid));' : ''}
 }`;
 
 // ---- backend --------------------------------------------------------------
@@ -252,12 +252,12 @@ export function createWebGL2Backend(
   const hudVao = gl.createVertexArray()!;
   const hudVbo = gl.createBuffer()!;
 
-  function makeColorTex(internal: number, format: number, type: number): WebGLTexture {
+  function makeColorTex(internal: number, format: number, type: number, filter: number = gl.LINEAR): WebGLTexture {
     const t = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, t);
     gl.texImage2D(gl.TEXTURE_2D, 0, internal, width, height, 0, format, type, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
@@ -276,8 +276,10 @@ export function createWebGL2Backend(
       if (gFbo) gl.deleteFramebuffer(gFbo);
       gColorTex = makeColorTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
       gNdTex = makeColorTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
-      // Third target: per-surface uv.xy (see iUV0). RG16F is enough for two coords.
-      gUvTex = makeColorTex(gl.RG16F, gl.RG, gl.HALF_FLOAT);
+      // Third target: integer meta (uv*65535, type, category|flip<<3|rot<<4).
+      // RGBA16UI, NEAREST-only (integer textures can't linear-filter — which is
+      // exactly what we want: the ids are point-sampled).
+      gUvTex = makeColorTex(gl.RGBA16UI, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, gl.NEAREST);
       gDepthRb = gl.createRenderbuffer();
       gl.bindRenderbuffer(gl.RENDERBUFFER, gDepthRb);
       gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
@@ -368,7 +370,7 @@ export function createWebGL2Backend(
         // Colour: magenta/black; normal/depth: zero normal, far depth; uv: zero.
         gl.clearBufferfv(gl.COLOR, 0, [clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1]);
         gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 20000]);
-        gl.clearBufferfv(gl.COLOR, 2, [0, 0, 0, 0]);
+        gl.clearBufferuiv(gl.COLOR, 2, [0, 0, 0, 0]); // integer meta target
         gl.clearBufferfv(gl.DEPTH, 0, [1]);
       } else {
         gl.clearColor(clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1);

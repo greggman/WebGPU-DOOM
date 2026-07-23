@@ -19,9 +19,10 @@ import { buildTextureArray, type TextureArray } from '../textures.js';
 // build never pulls in postprocess.ts or the effect library.
 const GBUFFER_FORMAT: GPUTextureFormat = 'rgba16float';
 const GBUFFER_CLEAR = { r: 0, g: 0, b: 0, a: 20000 };
-// A third G-buffer target: per-surface texture UV (see iUV0). Two channels are
-// enough, so rg16float halves the bandwidth of a full rgba target.
-const GUV_FORMAT: GPUTextureFormat = 'rg16float';
+// A third G-buffer target holding integer per-pixel meta, point-sampled in
+// post-process: .rg = uv*65535, .b = mobj type, .a = category|flip<<3|rotation<<4.
+// uint (not float) so the ids stay exact and unpack with bit ops.
+const GUV_FORMAT: GPUTextureFormat = 'rgba16uint';
 const GUV_CLEAR = { r: 0, g: 0, b: 0, a: 0 };
 
 /** Builds the post-process filter. Injected by main-postprocess.ts so the plain

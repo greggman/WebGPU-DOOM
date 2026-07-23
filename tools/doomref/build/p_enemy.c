@@ -761,13 +761,18 @@ void A_Chase (mobj_t*	actor)
     }
     
     // chase towards player
-    if (--actor->movecount<0
-	|| !P_Move (actor))
     {
-	P_NewChaseDir (actor);
+	extern int g_rnglog;
+	boolean nd = (--actor->movecount<0 || !P_Move (actor));
+	if (g_rnglog) fprintf(stderr, "CHASE type=%d x=%d y=%d mc=%d newdir=%d\n", actor->type, actor->x, actor->y, actor->movecount, nd);
+	if (nd) P_NewChaseDir (actor);
     }
-    
+
     // make active sound
+    {
+	extern int g_rnglog;
+	if (g_rnglog && actor->info->activesound != sfx_None) fprintf(stderr, "GROWL type=%d x=%d y=%d\n", actor->type, actor->x, actor->y);
+    }
     if (actor->info->activesound
 	&& P_Random () < 3)
     {
@@ -811,6 +816,7 @@ void A_PosAttack (mobj_t* actor)
     A_FaceTarget (actor);
     angle = actor->angle;
     slope = P_AimLineAttack (actor, angle, MISSILERANGE);
+    { extern int g_rnglog; if (g_rnglog) fprintf(stderr, "SHOOT type=%d angle=%u slope=%d ax=%d ay=%d az=%d tx=%d ty=%d\n", actor->type, angle, slope, actor->x, actor->y, actor->z, actor->target->x, actor->target->y); }
 
     S_StartSound (actor, sfx_pistol);
     angle += (P_Random()-P_Random())<<20;

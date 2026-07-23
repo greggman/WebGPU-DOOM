@@ -186,8 +186,8 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
 
   // The attract loop, exactly as the shipping game (d_main.c D_DoAdvanceDemo).
   // Shareware order: title screen -> DEMO1 -> credits -> DEMO2 -> title -> DEMO3,
-  // then wrap. The recorded demos still desync (the playsim isn't yet frame-exact
-  // for the WHOLE demo) — a demo that ends early just advances the sequence.
+  // then wrap. All three play frame-exact against vanilla (verified tic-for-tic
+  // by tools/doomref); the early-out below is just belt-and-braces.
   let demoSeq = -1;                    // advanceDemo() bumps to 0 first
   let pageName = 'TITLEPIC';           // the full-screen graphic shown in 'title'
   let pageTic = 0;                     // tics until the page auto-advances
@@ -629,8 +629,11 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
           continue;
         }
         if (mode === 'attract') {
-          // The demo drives the ticcmd. When it runs out, or the player dies to
-          // a desync, roll on to the next entry in the attract sequence.
+          // The demo drives the ticcmd; it ends only at its recorded end (the
+          // DEMOMARKER, i.e. cmds run out) — exactly like vanilla G_CheckDemoStatus.
+          // A death near the end is PART of the demo: keep ticking so P_DeathThink
+          // plays out (the camera falls to the ground) until the input runs out.
+          // (Demos are frame-exact now, so a death is never a desync symptom.)
           if (!demo || demoTic >= demo.cmds.length) { advanceDemo(); return; }
           const c = demo.cmds[demoTic++];
           player.cmd.forwardMove = c.forwardMove;
@@ -639,7 +642,6 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
           player.cmd.buttons = c.buttons;
           P_Ticker([player]);
           accumulator -= MS_PER_TIC;
-          if (player.state === PST_DEAD) { advanceDemo(); return; }
           continue;
         }
 

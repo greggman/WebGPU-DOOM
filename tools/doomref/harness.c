@@ -149,6 +149,9 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    extern int g_rnglog;
+    int traceTic = (argc > 2) ? atoi(argv[2]) : -1;  // dump P_Random draws at this tic
+
     player_t* pl = &players[consoleplayer];
     printf("# %s reference E%dM%d skill %d\n", demo, gameepisode, gamemap, gameskill);
     printf("# tic prnd x y angle health\n");
@@ -157,9 +160,29 @@ int main(int argc, char** argv)
     {
         G_ReadDemoTiccmd(&pl->cmd);   // at DEMOMARKER clears demoplayback
         if (!demoplayback) break;
-        // Desync diagnosis hooks (g_thinklog/g_dmglog/g_slidelog/g_thrustlog, the
-        // CK world-checksum and per-mobj MON dumps) attach here at a target tic. Off.
+        g_rnglog = (t == traceTic);
+        if (t == traceTic) fprintf(stderr, "== vanilla tic %d ==\n", t);
         P_Ticker();
+        {   // order-independent monster-state checksum, for finding the root divergence
+            extern state_t states[];
+            int sx=0,sy=0,smc=0,smd=0,sst=0,shp=0,n=0,smx=0,smy=0,smz=0;
+            for (thinker_t* th = thinkercap.next; th && th != &thinkercap; th = th->next) {
+                if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+                mobj_t* m = (mobj_t*)th;
+                sx+=m->x; sy+=m->y; smc+=m->movecount; smd+=m->movedir;
+                sst+=(int)(m->state-states); shp+=m->health; n++;
+                smx+=m->momx; smy+=m->momy; smz+=m->momz;
+            }
+            fprintf(stderr, "CK %d %d %d %d %d %d %d %d M %d %d %d\n", t, sx, sy, smc, smd, sst, shp, n, smx, smy, smz);
+        }
+        if (t == traceTic) {   // full mobj list for diffing the spawn set
+            for (thinker_t* th = thinkercap.next; th && th != &thinkercap; th = th->next) {
+                if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+                mobj_t* m = (mobj_t*)th;
+                extern state_t states[];
+                fprintf(stderr, "MOBJ type=%d hp=%d x=%d y=%d mx=%d my=%d fz=%d\n", m->type, m->health, m->x, m->y, m->momx, m->momy, m->floorz);
+            }
+        }
         mobj_t* mo = pl->mo;
         printf("%d %d %d %d %u %d\n",
                t, prndindex, mo->x, mo->y, (unsigned)mo->angle, pl->health);

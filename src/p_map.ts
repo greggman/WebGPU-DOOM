@@ -467,6 +467,16 @@ function PTR_ShootTraverse(inter: Intercept): boolean {
     const x = (trace.x + FixedMul(trace.dx, frac)) | 0;
     const y = (trace.y + FixedMul(trace.dy, frac)) | 0;
     const z = (shootZ + FixedMul(aimSlope, FixedMul(frac, attackRange))) | 0;
+
+    // Don't shoot the sky: a shot that lands above a sky ceiling, or into a sky
+    // "hack" wall (sky on both sides), stops with NO puff. Missing this spawns a
+    // spurious puff — and its P_Random draws desync demos (e.g. a zombie firing
+    // upward at a sky-topped wall).
+    if (li.frontSector!.ceilingPic === 'F_SKY1') {
+      if (z > li.frontSector!.ceilingHeight) return false;
+      if (li.backSector && li.backSector.ceilingPic === 'F_SKY1') return false;
+    }
+
     P_SpawnPuff(x, y, z, attackRange === MELEERANGE);
     return false;
   }

@@ -8,7 +8,7 @@
 
 import type { Wad } from './wad.js';
 import { loadMap, type DoomMap } from './map.js';
-import { FRACBITS } from './m_fixed.js';
+import { FRACBITS, FixedMul } from './m_fixed.js';
 import { P_SetupLevel, type PlaysimMap } from './p_setup.js';
 import { P_InitThinkers } from './p_tick.js';
 import { P_InitBlockLinks } from './p_blockmap.js';
@@ -108,18 +108,36 @@ export interface Level {
   totalSecret: number;
 }
 
-/** r_main.c R_PointInSubsector. Nodes are in map units, so shift down. */
+/** r_main.c R_PointInSubsector / R_PointOnSide. The point is fixed-point and the
+ *  test must run at FULL fixed-point precision — truncating to map units first
+ *  puts a mobj with fractional coords on the wrong side of a boundary, which
+ *  (e.g.) makes a sliding corpse pick the wrong sector floor and desyncs demos.
+ *  Node dx/dy are stored in MAP UNITS, which is exactly `node->dx >> FRACBITS`,
+ *  so FixedMul takes them directly; the sign-bit shortcut reproduces vanilla's
+ *  reliance on 32-bit overflow (`| 0`). */
 function makeSubSectorAt(map: DoomMap): (x: number, y: number) => number {
   const root = map.nodes.length - 1;
   return (fx: number, fy: number): number => {
     if (root < 0) return 0;
-    const x = fx >> FRACBITS;
-    const y = fy >> FRACBITS;
     let n = root;
     while (!(n & 0x8000)) {
       const nd = map.nodes[n];
-      // R_PointOnSide: front (child 0) when the cross product is >= 0.
-      n = nd.children[(x - nd.x) * nd.dy - (y - nd.y) * nd.dx >= 0 ? 0 : 1];
+      const ndx = nd.dx | 0, ndy = nd.dy | 0;         // map units
+      const nx = (nd.x << 16) | 0, ny = (nd.y << 16) | 0; // fixed
+      let side: number;
+      if (ndx === 0) {
+        side = fx <= nx ? (ndy > 0 ? 1 : 0) : (ndy < 0 ? 1 : 0);
+      } else if (ndy === 0) {
+        side = fy <= ny ? (ndx < 0 ? 1 : 0) : (ndx > 0 ? 1 : 0);
+      } else {
+        const dx = (fx - nx) | 0, dy = (fy - ny) | 0;
+        if (((ndy ^ ndx ^ dx ^ dy) & 0x80000000) !== 0) {
+          side = ((ndy ^ dx) & 0x80000000) !== 0 ? 1 : 0; // left is negative -> back
+        } else {
+          side = FixedMul(dy, ndx) < FixedMul(ndy, dx) ? 0 : 1; // right < left -> front
+        }
+      }
+      n = nd.children[side];
     }
     return n & 0x7fff;
   };

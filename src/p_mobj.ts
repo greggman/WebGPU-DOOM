@@ -97,6 +97,13 @@ export function P_SpawnMobj(x: number, y: number, z: number, type: number): PMob
   const info = mobjInfo[type];
   const st = states[info.spawnState];
 
+  // MT_TELEPORTMAN is NOSECTOR in vanilla, which finds it by scanning thinkercap
+  // (every mobj) in EV_Teleport. We have no global mobj list, so EV_Teleport
+  // scans sector thingLists — which needs the marker linked into its sector.
+  // Drop NOSECTOR so P_SetThingPosition links it; nothing RNG-drawing iterates
+  // thingLists, so this stays demo-sync-neutral. (It keeps NOBLOCKMAP.)
+  const flags = type === MT.MT_TELEPORTMAN ? info.flags & ~MF.MF_NOSECTOR : info.flags;
+
   const mo: PMobj = {
     x, y, z: 0,
     angle: 0,
@@ -110,7 +117,7 @@ export function P_SpawnMobj(x: number, y: number, z: number, type: number): PMob
     tics: st.tics,
     sprite: st.sprite,
     frame: st.frame,
-    flags: info.flags,
+    flags,
     health: info.spawnHealth,
     subSector: 0,
     player: null,
@@ -231,6 +238,11 @@ export function P_XYMovement(mo: PMobj): void {
   if (mo.momx > -STOPSPEED && mo.momx < STOPSPEED &&
       mo.momy > -STOPSPEED && mo.momy < STOPSPEED &&
       (!player || (player.cmd.forwardMove === 0 && player.cmd.sideMove === 0))) {
+    // If the player came to rest in a walking frame, drop back to the idle
+    // frame. This is the ONLY place the run animation resets — miss it and the
+    // player mobj is stuck in S_PLAY_RUN*, which desyncs demos. `>>> 0` mirrors
+    // vanilla's unsigned compare so states below S_PLAY_RUN1 fall out.
+    if (player && ((mo.state - S.S_PLAY_RUN1) >>> 0) < 4) P_SetMobjState(mo, S.S_PLAY);
     mo.momx = 0;
     mo.momy = 0;
   } else {

@@ -1859,7 +1859,8 @@ function P_SetupLevel(map2) {
       slopeType: slopeTypeOf(dx, dy),
       frontSector: frontSide ? sectors[frontSide.sector] ?? null : null,
       backSector: backSide ? sectors[backSide.sector] ?? null : null,
-      validCount: 0
+      validCount: 0,
+      seen: false
     };
   });
   for (let i = 0; i < lines.length; i++) {
@@ -2192,6 +2193,9 @@ var rndIndex = 0;
 var prndIndex = 0;
 var prndCount = 0;
 var drawLog = null;
+function setDrawLog(fn) {
+  drawLog = fn;
+}
 function P_Random() {
   prndIndex = prndIndex + 1 & 255;
   prndCount++;
@@ -3039,6 +3043,7 @@ function P_SetMobjState(mo2, state) {
 function P_SpawnMobj(x, y, z, type) {
   const info = mobjInfo[type];
   const st = states[info.spawnState];
+  const flags = type === MT.MT_TELEPORTMAN ? info.flags & ~MF.MF_NOSECTOR : info.flags;
   const mo2 = {
     x,
     y,
@@ -3056,7 +3061,7 @@ function P_SpawnMobj(x, y, z, type) {
     tics: st.tics,
     sprite: st.sprite,
     frame: st.frame,
-    flags: info.flags,
+    flags,
     health: info.spawnHealth,
     subSector: 0,
     player: null,
@@ -3141,6 +3146,7 @@ function P_XYMovement(mo2) {
     }
   }
   if (mo2.momx > -STOPSPEED && mo2.momx < STOPSPEED && mo2.momy > -STOPSPEED && mo2.momy < STOPSPEED && (!player2 || player2.cmd.forwardMove === 0 && player2.cmd.sideMove === 0)) {
+    if (player2 && mo2.state - S.S_PLAY_RUN1 >>> 0 < 4) P_SetMobjState(mo2, S.S_PLAY);
     mo2.momx = 0;
     mo2.momy = 0;
   } else {
@@ -3158,6 +3164,7 @@ function P_ZMovement(mo2) {
     if (mo2.momz < 0) {
       if (mo2.player && mo2.momz < -GRAVITY * 8) {
         mo2.player.deltaViewHeight = mo2.momz >> 3;
+        S_StartSound(mo2, "sfx_oof");
       }
       mo2.momz = 0;
     }
@@ -3539,6 +3546,10 @@ function PTR_ShootTraverse(inter) {
     const x2 = trace.x + FixedMul(trace.dx, frac2) | 0;
     const y2 = trace.y + FixedMul(trace.dy, frac2) | 0;
     const z2 = shootZ + FixedMul(aimSlope, FixedMul(frac2, attackRange)) | 0;
+    if (li.frontSector.ceilingPic === "F_SKY1") {
+      if (z2 > li.frontSector.ceilingHeight) return false;
+      if (li.backSector && li.backSector.ceilingPic === "F_SKY1") return false;
+    }
     P_SpawnPuff(x2, y2, z2, attackRange === MELEERANGE2);
     return false;
   }
@@ -3704,7 +3715,10 @@ function PTR_UseTraverse(inter) {
   if (!li) return true;
   if (!li.special) {
     const open = P_LineOpening(li);
-    if (open.range <= 0) return false;
+    if (open.range <= 0) {
+      S_StartSound(useThing, "sfx_noway");
+      return false;
+    }
     return true;
   }
   let side = 0;
@@ -3894,6 +3908,8 @@ function EV_Teleport(line, side, thing) {
 
 // src/p_user.ts
 var ANG902 = 1073741824;
+var ANG1802 = 2147483648;
+var ANG5 = ANG902 / 18 | 0;
 var MAXBOB = 1048576;
 var PST_LIVE = 0;
 var PST_DEAD = 1;
@@ -3955,8 +3971,34 @@ function P_CalcHeight(player2, levelTime3) {
   }
 }
 var BT_USE = 2;
+function P_DeathThink(player2, levelTime3) {
+  const mo2 = player2.mo;
+  P_MovePsprites(player2);
+  if (player2.viewHeight > 6 * FRACUNIT) player2.viewHeight = player2.viewHeight - FRACUNIT | 0;
+  if (player2.viewHeight < 6 * FRACUNIT) player2.viewHeight = 6 * FRACUNIT;
+  player2.deltaViewHeight = 0;
+  onGround = mo2.z <= mo2.floorZ;
+  P_CalcHeight(player2, levelTime3);
+  if (player2.attacker && player2.attacker !== mo2) {
+    const angle = R_PointToAngle2(mo2.x, mo2.y, player2.attacker.x, player2.attacker.y);
+    const delta = angle - mo2.angle >>> 0;
+    if (delta < ANG5 || delta > -ANG5 >>> 0) {
+      mo2.angle = angle;
+      if (player2.damageCount) player2.damageCount--;
+    } else if (delta < ANG1802) {
+      mo2.angle = mo2.angle + ANG5 >>> 0;
+    } else {
+      mo2.angle = mo2.angle - ANG5 >>> 0;
+    }
+  } else if (player2.damageCount) {
+    player2.damageCount--;
+  }
+}
 function P_PlayerThink(player2, levelTime3) {
-  if (player2.state === PST_DEAD) return;
+  if (player2.state === PST_DEAD) {
+    P_DeathThink(player2, levelTime3);
+    return;
+  }
   if (player2.mo.reactionTime) player2.mo.reactionTime--;
   else P_MovePlayer(player2);
   P_CalcHeight(player2, levelTime3);
@@ -3969,6 +4011,27 @@ function P_PlayerThink(player2, levelTime3) {
     player2.useDown = false;
   }
   P_MovePsprites(player2);
+  const pw = player2.powers;
+  if (pw[
+    1
+    /* strength */
+  ]) pw[1]++;
+  if (pw[
+    0
+    /* invulnerability */
+  ]) pw[0]--;
+  if (pw[
+    2
+    /* invisibility */
+  ] && !--pw[2]) player2.mo.flags &= ~MF.MF_SHADOW;
+  if (pw[
+    5
+    /* infrared */
+  ]) pw[5]--;
+  if (pw[
+    3
+    /* ironfeet */
+  ]) pw[3]--;
   if (player2.damageCount) player2.damageCount--;
   if (player2.bonusCount) player2.bonusCount--;
 }
@@ -4012,6 +4075,7 @@ function P_SetPsprite(player2, position, stnum) {
 }
 function P_BringUpWeapon(player2) {
   if (player2.pendingWeapon === WP_NOCHANGE) player2.pendingWeapon = player2.readyWeapon;
+  if (player2.pendingWeapon === WP.wp_chainsaw) S_StartSound(player2.mo, "sfx_sawup");
   const newState = weaponInfo[player2.pendingWeapon].upState;
   player2.pendingWeapon = WP_NOCHANGE;
   player2.psprites[ps_weapon].sy = WEAPONBOTTOM;
@@ -4055,6 +4119,9 @@ function A_WeaponReady(player2, psp) {
   const mo2 = player2.mo;
   if (mo2.state === S.S_PLAY_ATK1 || mo2.state === S.S_PLAY_ATK2) {
     P_SetMobjState(mo2, S.S_PLAY);
+  }
+  if (player2.readyWeapon === WP.wp_chainsaw && psp.state === S.S_SAW) {
+    S_StartSound(mo2, "sfx_sawidl");
   }
   if (player2.pendingWeapon !== WP_NOCHANGE || !player2.health) {
     P_SetPsprite(player2, ps_weapon, weaponInfo[player2.readyWeapon].downState);
@@ -4730,6 +4797,36 @@ function EV_VerticalDoor(line, thing) {
   if (backSideNum < 0) return;
   const sec = line.backSector;
   if (!sec) return;
+  const p = thing.player;
+  switch (line.special) {
+    case 26:
+    case 32:
+      if (!p) return;
+      if (!p.cards[0] && !p.cards[3]) {
+        p.message = "YOU NEED A BLUE KEY TO OPEN THIS DOOR";
+        S_StartSound(thing, "sfx_oof");
+        return;
+      }
+      break;
+    case 27:
+    case 34:
+      if (!p) return;
+      if (!p.cards[1] && !p.cards[4]) {
+        p.message = "YOU NEED A YELLOW KEY TO OPEN THIS DOOR";
+        S_StartSound(thing, "sfx_oof");
+        return;
+      }
+      break;
+    case 28:
+    case 33:
+      if (!p) return;
+      if (!p.cards[2] && !p.cards[5]) {
+        p.message = "YOU NEED A RED KEY TO OPEN THIS DOOR";
+        S_StartSound(thing, "sfx_oof");
+        return;
+      }
+      break;
+  }
   if (sec.specialData) {
     const door2 = sec.specialData;
     switch (line.special) {
@@ -5854,10 +5951,34 @@ function P_GiveCard(player2, card) {
   player2.bonusCount = BONUSADD;
   player2.cards[card] = true;
 }
+var INVULNTICS = 30 * 35;
+var INVISTICS = 60 * 35;
+var INFRATICS = 120 * 35;
+var IRONTICS = 60 * 35;
 function P_GivePower(player2, power) {
-  if (player2.powers[power]) return false;
-  player2.powers[power] = 1;
-  return true;
+  switch (power) {
+    case 0:
+      player2.powers[power] = INVULNTICS;
+      return true;
+    case 2:
+      player2.powers[power] = INVISTICS;
+      if (player2.mo) player2.mo.flags |= MF.MF_SHADOW;
+      return true;
+    case 5:
+      player2.powers[power] = INFRATICS;
+      return true;
+    case 3:
+      player2.powers[power] = IRONTICS;
+      return true;
+    case 1:
+      P_GiveBody(player2, 100);
+      player2.powers[power] = 1;
+      return true;
+    default:
+      if (player2.powers[power]) return false;
+      player2.powers[power] = 1;
+      return true;
+  }
 }
 var BONUSADD = 6;
 function P_TouchSpecialThing(special, toucher) {
@@ -6008,6 +6129,13 @@ function P_KillMobj(source, target) {
   if (target.type !== MT.MT_SKULL) target.flags &= ~MF.MF_NOGRAVITY;
   target.flags |= MF.MF_CORPSE | MF.MF_DROPOFF;
   target.height >>= 2;
+  if (target.flags & MF.MF_COUNTKILL) {
+    if (source && source.player) source.player.killCount++;
+    else {
+      const p = env7.player();
+      if (p) p.killCount++;
+    }
+  }
   if (target.player) {
     target.flags &= ~MF.MF_SOLID;
     target.player.state = PST_DEAD;
@@ -6038,7 +6166,7 @@ function P_KillMobj(source, target) {
   const drop = P_SpawnMobj(target.x, target.y, ONFLOORZ, item);
   drop.flags |= MF.MF_DROPPED;
 }
-var env7 = { skill: () => 2 };
+var env7 = { skill: () => 2, player: () => null };
 function P_SetInterEnv(e) {
   env7 = e;
 }
@@ -6184,12 +6312,25 @@ function makeSubSectorAt(map2) {
   const root = map2.nodes.length - 1;
   return (fx, fy) => {
     if (root < 0) return 0;
-    const x = fx >> FRACBITS;
-    const y = fy >> FRACBITS;
     let n = root;
     while (!(n & 32768)) {
       const nd = map2.nodes[n];
-      n = nd.children[(x - nd.x) * nd.dy - (y - nd.y) * nd.dx >= 0 ? 0 : 1];
+      const ndx = nd.dx | 0, ndy = nd.dy | 0;
+      const nx = nd.x << 16 | 0, ny = nd.y << 16 | 0;
+      let side;
+      if (ndx === 0) {
+        side = fx <= nx ? ndy > 0 ? 1 : 0 : ndy < 0 ? 1 : 0;
+      } else if (ndy === 0) {
+        side = fy <= ny ? ndx < 0 ? 1 : 0 : ndx > 0 ? 1 : 0;
+      } else {
+        const dx = fx - nx | 0, dy = fy - ny | 0;
+        if (((ndy ^ ndx ^ dx ^ dy) & 2147483648) !== 0) {
+          side = ((ndy ^ dx) & 2147483648) !== 0 ? 1 : 0;
+        } else {
+          side = FixedMul(dy, ndx) < FixedMul(ndy, dx) ? 0 : 1;
+        }
+      }
+      n = nd.children[side];
     }
     return n & 32767;
   };
@@ -6260,10 +6401,22 @@ function G_LoadLevel(wad2, mapName, skill = 2) {
     setThingPosition: P_SetThingPosition,
     unsetThingPosition: P_UnsetThingPosition,
     gameTic: P_LevelTime,
-    lines: () => sim.lines
+    lines: () => sim.lines,
+    // A_BossDeath (p_enemy.c): on E1M8, when the LAST Baron of Hell dies, lower
+    // the tag-666 floor to open the exit. Only fires with a player still alive.
+    bossDeath: (mo3) => {
+      if (!/M8$/.test(map2.name) || mo3.type !== MT.MT_BRUISER) return;
+      if (!playerRef || playerRef.health <= 0) return;
+      for (const sec of sim.sectors) {
+        for (let m = sec.thingList; m; m = m.snext) {
+          if (m !== mo3 && m.type === MT.MT_BRUISER && m.health > 0) return;
+        }
+      }
+      EV_DoFloor({ tag: 666 }, 1 /* LowerFloorToLowest */);
+    }
   });
   P_SetShootEnv({ damageMobj: P_DamageMobj });
-  P_SetInterEnv({ skill: () => skill });
+  P_SetInterEnv({ skill: () => skill, player: () => playerRef });
   P_SetMissileEnv({ aimLineAttack: P_AimLineAttack, lineTarget: () => lineTarget });
   P_SetPsprEnv({
     aimLineAttack: P_AimLineAttack,
@@ -6366,6 +6519,7 @@ function G_LoadLevel(wad2, mapName, skill = 2) {
 // tools/demotrace.ts
 var WAD_PATH = "./doom1.wad";
 var which = process.argv[2] ?? "DEMO1";
+var traceTic = process.argv[3] ? Number(process.argv[3]) : -1;
 var buf = readFileSync(WAD_PATH);
 var wad = new Wad(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
 var demo = readDemo(wad, which);
@@ -6380,7 +6534,38 @@ for (let t = 0; t < demo.cmds.length; t++) {
   player.cmd.sideMove = c.sideMove;
   player.cmd.angleTurn = c.angleTurn;
   player.cmd.buttons = c.buttons;
-  P_Ticker([player]);
+  if (t === traceTic) {
+    setDrawLog((n2, v) => {
+      const frames = (new Error().stack ?? "").split("\n").slice(2, 8).map((s) => s.trim().replace(/^at\s+/, ""));
+      const caller = (frames.find((f) => !/P_Random|setDrawLog|drawLog|<anonymous>|Object\./.test(f)) ?? frames[0]).replace(/\s*\(.*/, "");
+      console.error(`DRAW ${n2} ${v} <- ${caller}`);
+    });
+    P_Ticker([player]);
+    setDrawLog(null);
+  } else {
+    P_Ticker([player]);
+  }
+  let sx = 0, sy = 0, smc = 0, smd = 0, sst = 0, shp = 0, n = 0, smx = 0, smy = 0, smz = 0;
+  for (const sec of level9.sim.sectors) {
+    for (let m = sec.thingList; m; m = m.snext) {
+      sx = sx + m.x | 0;
+      sy = sy + m.y | 0;
+      smc = smc + m.moveCount | 0;
+      smd = smd + m.moveDir | 0;
+      sst = sst + m.state | 0;
+      shp = shp + m.health | 0;
+      n++;
+      smx = smx + m.momx | 0;
+      smy = smy + m.momy | 0;
+      smz = smz + m.momz | 0;
+    }
+  }
+  console.error(`CK ${t} ${sx} ${sy} ${smc} ${smd} ${sst} ${shp} ${n} M ${smx} ${smy} ${smz}`);
+  if (t === traceTic) {
+    for (const sec of level9.sim.sectors) {
+      for (let m = sec.thingList; m; m = m.snext) console.error(`MOBJ type=${m.type} hp=${m.health} x=${m.x} y=${m.y} mx=${m.momx} my=${m.momy} fz=${m.floorZ}`);
+    }
+  }
   const { prndIndex: prndIndex2 } = randomIndices();
   const ang = mo.angle >>> 0;
   console.log(`${t} ${prndIndex2} ${pRandomCount()} ${mo.x} ${mo.y} ${ang} ${player.health}`);

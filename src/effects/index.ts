@@ -19,6 +19,7 @@ import { chtest } from './chtest.js';
 import { spriteId } from './spriteid.js';
 import { envmap } from './envmap.js';
 import { ssao } from './ssao.js';
+import { oneBit } from './1bit.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -50,5 +51,6 @@ export const EFFECTS: PostEffect[] = [
   spriteId,
   envmap,
   ssao,
+  oneBit,
   chtest,
 ];

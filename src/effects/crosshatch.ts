@@ -90,7 +90,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   // hatch like rounded volumes (centre faces the camera, edges bow away).
   var Nsh = N;
   if (iSprite(uv) > 0.5) {
-    let pc = (iUV0(uv) - vec2f(0.5, 0.5)) * 2.0;
+    let pc = (iUV0(uv) - vec2f(0.5, 0.5)) * 1.0;
     let z = sqrt(max(0.0, 1.0 - dot(pc, pc)));
     Nsh = normalize(U.iCamRight * pc.x - U.iCamUp * pc.y - U.iCamFwd * z);
   }
@@ -200,7 +200,7 @@ void mainImage(out vec4 fragColor, in vec2 fc) {
 
   vec3 Nsh = N;
   if (iSprite(uv) > 0.5) {
-    vec2 pc = (iUV0(uv) - vec2(0.5)) * 2.0;
+    vec2 pc = (iUV0(uv) - vec2(0.5)) * 1.0;
     float z = sqrt(max(0.0, 1.0 - dot(pc, pc)));
     Nsh = normalize(iCamRight * pc.x - iCamUp * pc.y - iCamFwd * z);
   }

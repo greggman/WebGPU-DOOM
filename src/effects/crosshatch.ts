@@ -22,7 +22,6 @@ export const crosshatch: PostEffect = {
   src: 'https://github.com/spite/sketch/tree/master/cross-hatch-viii',
   license: 'MIT',
   licenseUrl: 'https://github.com/spite/sketch/blob/master/LICENSE',
-  hidden: true,
   wgsl: `
 fn luma3(c: vec3f) -> f32 { return dot(c, vec3f(0.299, 0.587, 0.114)); }
 // Tone source: a small blur of scene luma. DOOM's floor/ceiling textures shimmer
@@ -56,6 +55,19 @@ fn hpattern(qr: vec2f, angle: f32) -> f32 {
 fn texCube(p: vec3f, angle: f32, n: vec3f) -> f32 {
   let v = vec3f(hpattern(p.yz, angle), hpattern(p.zx, angle), hpattern(p.xy, angle));
   return dot(v, n * n);
+}
+// One octave of hatching: three tone-gated cross directions, returned as
+// paper-ness (1 = paper, lower = inked strokes).
+fn hatchLayers(coords: vec3f, n: vec3f, l: f32) -> f32 {
+  let TAU = 6.28318530718;
+  let a = 1.45;
+  let h0 = texCube(coords, a, n);
+  let h1 = texCube(2.0 * coords, a - TAU / 8.0, n);
+  let h2 = texCube(2.0 * coords, a + TAU / 8.0, n);
+  var line = mix(1.0, h0, smoothstep(0.12, 0.28, l));
+  line = line * mix(1.0, h1, smoothstep(0.42, 0.58, l));
+  line = line * mix(1.0, h2, smoothstep(0.72, 0.88, l));
+  return line;
 }
 fn burn1(base: f32, blend: f32) -> f32 { if (blend <= 0.0) { return 0.0; } return max(1.0 - (1.0 - base) / blend, 0.0); }
 fn colorBurn(base: vec3f, blend: vec3f, opacity: f32) -> vec3f {
@@ -99,38 +111,33 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
   let b = clamp(0.12 + 0.62 * scn + 0.24 * kL + 0.30 * head, 0.0, 1.0);
   let l = min(1.0 - b, 0.82);                             // ink density (capped: never solid black)
 
-  // Layered procedural hatch: add a cross direction each time the tone crosses a
-  // darker threshold; pow() fades each layer in smoothly near its threshold.
-  // Frequency is compensated by depth so stroke spacing stays ~constant in screen
-  // space instead of aliasing to noise at distance.
-  // All three layers are evaluated unconditionally (uniform control flow, so the
-  // band-limiting derivatives are legal); tone gates how strongly each darkens.
-  let TAU = 6.28318530718;
-  let angle = 1.45;
-  let coords = P * 0.12;                                 // fixed world-space stroke spacing
-  let h0 = texCube(coords, angle, Nsh);
-  let h1 = texCube(2.0 * coords, angle - TAU / 8.0, Nsh);
-  let h2 = texCube(2.0 * coords, angle + TAU / 8.0, Nsh);
-  // Multiply the layers' paper-ness: darker tone activates more cross directions,
-  // each stamping thin ink strokes onto the paper.
-  var line = 1.0;
-  line = line * mix(1.0, h0, smoothstep(0.12, 0.28, l));
-  line = line * mix(1.0, h1, smoothstep(0.42, 0.58, l));
-  line = line * mix(1.0, h2, smoothstep(0.72, 0.88, l));
+  // Distance-adaptive octaves: the stroke world-frequency halves every depth
+  // octave, so screen stroke spacing stays ~constant WITHOUT a per-pixel
+  // frequency warp (which bent the strokes into arcs). Two neighbouring octaves
+  // crossfade, and each is still straight world-locked lines.
+  let ld = log2(max(dist, 1.0) / 160.0);
+  let oct = floor(ld);
+  let fA = 6.4 * exp2(-oct);
+  let line = mix(hatchLayers(P * fA, Nsh, l), hatchLayers(P * (fA * 0.5), Nsh, l), ld - oct);
   var col = colorBurn(paper, ink, 1.0 - line);
 
-  // Ink outline from G-buffer depth + normal discontinuities (silhouettes and
-  // creases) — the same detector as the outline effect, drawn over the hatch.
-  let px = 2.0 / U.iResolution.xy;
+  // Ink outline: normal discontinuities (creases) + a depth SECOND difference
+  // (Laplacian). Using the second difference, not the first, keeps grazing floors
+  // and ceilings — which have a steep but smooth depth gradient — from reading as
+  // one solid inked band, while real silhouettes still spike.
+  let px = 1.3 / U.iResolution.xy;
+  let dx = vec2f(px.x, 0.0);
+  let dy = vec2f(0.0, px.y);
   let d0 = iDepth0(uv);
+  let lap = abs(iDepth0(uv + dx) + iDepth0(uv - dx) - 2.0 * d0)
+          + abs(iDepth0(uv + dy) + iDepth0(uv - dy) - 2.0 * d0);
+  let edgeD = lap / max(d0, 1.0);
   let n0 = normalize(iNormal0(uv));
-  var e = 0.0;
-  var offs = array(vec2f(px.x, 0.0), vec2f(-px.x, 0.0), vec2f(0.0, px.y), vec2f(0.0, -px.y));
-  for (var i = 0; i < 4; i = i + 1) {
-    e = e + abs(iDepth0(uv + offs[i]) - d0) / max(d0, 1.0);
-    e = e + (1.0 - clamp(dot(normalize(iNormal0(uv + offs[i])), n0), 0.0, 1.0));
-  }
-  col = mix(col, ink, smoothstep(0.55, 1.1, e));
+  var en = (1.0 - clamp(dot(normalize(iNormal0(uv + dx)), n0), 0.0, 1.0))
+         + (1.0 - clamp(dot(normalize(iNormal0(uv - dx)), n0), 0.0, 1.0))
+         + (1.0 - clamp(dot(normalize(iNormal0(uv + dy)), n0), 0.0, 1.0))
+         + (1.0 - clamp(dot(normalize(iNormal0(uv - dy)), n0), 0.0, 1.0));
+  col = mix(col, ink, smoothstep(0.9, 1.8, en + edgeD * 6.0));
 
   if (iDepth01(uv) >= 0.999) { col = paper; }             // sky / far = blank paper
   if (d < 1.0) { col = iColor0(uv).rgb; }                 // UI / weapon: leave alone
@@ -162,6 +169,17 @@ float hpattern(vec2 qr, float angle) {
 float texCube(vec3 p, float angle, vec3 n) {
   vec3 v = vec3(hpattern(p.yz, angle), hpattern(p.zx, angle), hpattern(p.xy, angle));
   return dot(v, n * n);
+}
+float hatchLayers(vec3 coords, vec3 n, float l) {
+  float TAU = 6.28318530718;
+  float a = 1.45;
+  float h0 = texCube(coords, a, n);
+  float h1 = texCube(2.0 * coords, a - TAU / 8.0, n);
+  float h2 = texCube(2.0 * coords, a + TAU / 8.0, n);
+  float line = mix(1.0, h0, smoothstep(0.12, 0.28, l));
+  line *= mix(1.0, h1, smoothstep(0.42, 0.58, l));
+  line *= mix(1.0, h2, smoothstep(0.72, 0.88, l));
+  return line;
 }
 float burn1(float base, float blend) { return (blend <= 0.0) ? 0.0 : max(1.0 - (1.0 - base) / blend, 0.0); }
 vec3 colorBurn(vec3 base, vec3 blend, float opacity) {
@@ -197,31 +215,29 @@ void mainImage(out vec4 fragColor, in vec2 fc) {
   float b = clamp(0.12 + 0.62 * scn + 0.24 * kL + 0.30 * head, 0.0, 1.0);
   float l = min(1.0 - b, 0.82);
 
-  float TAU = 6.28318530718;
-  float angle = 1.45;
-  vec3 coords = P * 0.12;
-  float h0 = texCube(coords, angle, Nsh);
-  float h1 = texCube(2.0 * coords, angle - TAU / 8.0, Nsh);
-  float h2 = texCube(2.0 * coords, angle + TAU / 8.0, Nsh);
-  float line = 1.0;
-  line *= mix(1.0, h0, smoothstep(0.12, 0.28, l));
-  line *= mix(1.0, h1, smoothstep(0.42, 0.58, l));
-  line *= mix(1.0, h2, smoothstep(0.72, 0.88, l));
+  // Distance-adaptive octaves (see WGSL note): world-frequency halves each depth
+  // octave for ~constant screen spacing without a per-pixel frequency warp.
+  float ld = log2(max(dist, 1.0) / 160.0);
+  float oct = floor(ld);
+  float fA = 6.4 * exp2(-oct);
+  float line = mix(hatchLayers(P * fA, Nsh, l), hatchLayers(P * (fA * 0.5), Nsh, l), ld - oct);
   vec3 col = colorBurn(paper, ink, 1.0 - line);
 
-  // Ink outline from G-buffer depth + normal discontinuities (silhouettes/creases).
-  vec2 px = 2.0 / iResolution.xy;
+  // Ink outline: normal creases + depth SECOND difference (Laplacian), so grazing
+  // floors/ceilings don't read as solid inked bands (see WGSL note).
+  vec2 px = 1.3 / iResolution.xy;
+  vec2 dx = vec2(px.x, 0.0);
+  vec2 dy = vec2(0.0, px.y);
   float d0 = iDepth0(uv);
+  float lap = abs(iDepth0(uv + dx) + iDepth0(uv - dx) - 2.0 * d0)
+            + abs(iDepth0(uv + dy) + iDepth0(uv - dy) - 2.0 * d0);
+  float edgeD = lap / max(d0, 1.0);
   vec3 n0 = normalize(iNormal0(uv));
-  vec2 offs[4];
-  offs[0] = vec2(px.x, 0.0); offs[1] = vec2(-px.x, 0.0);
-  offs[2] = vec2(0.0, px.y); offs[3] = vec2(0.0, -px.y);
-  float e = 0.0;
-  for (int i = 0; i < 4; i++) {
-    e += abs(iDepth0(uv + offs[i]) - d0) / max(d0, 1.0);
-    e += 1.0 - clamp(dot(normalize(iNormal0(uv + offs[i])), n0), 0.0, 1.0);
-  }
-  col = mix(col, ink, smoothstep(0.55, 1.1, e));
+  float en = (1.0 - clamp(dot(normalize(iNormal0(uv + dx)), n0), 0.0, 1.0))
+           + (1.0 - clamp(dot(normalize(iNormal0(uv - dx)), n0), 0.0, 1.0))
+           + (1.0 - clamp(dot(normalize(iNormal0(uv + dy)), n0), 0.0, 1.0))
+           + (1.0 - clamp(dot(normalize(iNormal0(uv - dy)), n0), 0.0, 1.0));
+  col = mix(col, ink, smoothstep(0.9, 1.8, en + edgeD * 6.0));
 
   if (iDepth01(uv) >= 0.999) col = paper;
   if (d < 1.0) col = iColor0(uv).rgb;

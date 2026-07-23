@@ -43,6 +43,27 @@ export const showDepth: PostEffect = {
   }`,
 };
 
+// Visualise the per-surface UV (iUV0): u -> red, v -> green. Sprites and HUD
+// patches read a clean 0..1 gradient; walls/floors show the wrapped tile UV. A
+// thin white grid at the UV cell edges makes the surface parameterisation
+// legible — sky and untextured pixels (uv ~0) stay black.
+export const showUVs: PostEffect = {
+  name: 'uvs',
+  author: 'Claude',
+  wgsl: `fn mainImage(fragCoord: vec2f) -> vec4f {
+    let uv = fragCoord / U.iResolution.xy;
+    let suv = iUV0(uv);
+    let g = smoothstep(0.02, 0.0, min(fract(suv.x), fract(suv.y)));  // grid lines
+    return vec4f(max(vec3f(suv, 0.0), vec3f(g)), 1.0);
+  }`,
+  glsl: `void mainImage(out vec4 c, in vec2 fc) {
+    vec2 uv = fc / iResolution.xy;
+    vec2 suv = iUV0(uv);
+    float g = smoothstep(0.02, 0.0, min(fract(suv.x), fract(suv.y)));
+    c = vec4(max(vec3(suv, 0.0), vec3(g)), 1.0);
+  }`,
+};
+
 export const outline: PostEffect = {
   name: 'outline',
   author: 'Claude',

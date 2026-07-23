@@ -7,6 +7,7 @@
 
 import { decodePatch, type IndexedImage } from './patch.js';
 import type { Wad } from './wad.js';
+import { SID_HUD } from './spriteid.js';
 
 export const VIRT_W = 320;
 export const VIRT_H = 200;
@@ -30,6 +31,7 @@ struct VsOut {
   @location(0) uv : vec2f,
   @location(1) @interpolate(flat) layer : u32,
   @location(2) @interpolate(flat) palRow : u32,
+  @location(3) @interpolate(flat) sid : u32,
 };
 
 @vertex
@@ -43,12 +45,15 @@ fn vs(@builtin(vertex_index) vi : u32, in : Inst) -> VsOut {
   var out : VsOut;
   out.clip = vec4f(px / ${VIRT_W}.0 * 2.0 - 1.0, 1.0 - py / ${VIRT_H}.0 * 2.0, 0.0, 1.0);
   out.uv = c;
-  out.layer = u32(in.layer);
+  // The category (SID_*) is packed into the layer field's high bits so the HUD
+  // needs no extra vertex attribute; mask it back out for the atlas lookup.
+  out.layer = u32(in.layer) & 0xffffu;
+  out.sid = u32(in.layer) >> 16u;
   out.palRow = u32(in.palRow);
   return out;
 }
 
-${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) uv2 : vec2f, };' : ''}
 
 @fragment
 fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
@@ -57,7 +62,7 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
   let idx = textureLoad(atlas, texel, in.layer, 0);
   if (idx.g == 0u) { discard; }   // patch transparency
   let rgb = textureLoad(palette, vec2i(i32(idx.r), i32(in.palRow)), 0).rgb;
-  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, 0.0, 0.0, 0.0); return o;' : 'return vec4f(rgb, 1.0);'}
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(0.0, f32(in.sid), 0.0, 0.0); o.uv2 = in.uv; return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -75,7 +80,7 @@ export interface Hud2D {
   draw(pass: GPURenderPassEncoder, quads: Quad[], paletteRow: number): void;
 }
 
-export interface Quad { name: string; x: number; y: number; }
+export interface Quad { name: string; x: number; y: number; sid?: number; }
 
 export function createHud2D(
   device: GPUDevice,
@@ -150,7 +155,7 @@ export function createHud2D(
     },
     fragment: {
       module, entryPoint: 'fs',
-      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }] : [{ format }],
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rg16float' }] : [{ format }],
     },
     primitive: { topology: 'triangle-list' },
     // The HUD shares the world's render pass, which has a depth attachment — so
@@ -198,7 +203,8 @@ export function createHud2D(
         instanceData[o + 1] = q.y - img.topOffset;
         instanceData[o + 2] = img.width;
         instanceData[o + 3] = img.height;
-        instanceData[o + 4] = layer;
+        // Category in the high 16 bits; layer index in the low 16 (< 512 patches).
+        instanceData[o + 4] = layer | ((q.sid ?? SID_HUD) << 16);
         instanceData[o + 5] = paletteRow;
         cursor++; n++;
       }

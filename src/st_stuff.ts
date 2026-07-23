@@ -7,6 +7,7 @@
 import { weaponInfo, states, sprNames, AM } from './info.js';
 import type { PPlayer } from './p_local.js';
 import type { Quad } from './hud2d.js';
+import { SID_HUDNUM } from './spriteid.js';
 import type { IndexedImage } from './patch.js';
 
 /** hu_stuff.c: the HUD font is STCFN033 ('!') .. STCFN095 ('_'). */
@@ -91,7 +92,7 @@ function drawNum(quads: Quad[], value: number, rightX: number, y: number,
   let v = Math.abs(value);
   let x = rightX;
   do {
-    quads.push({ name: `${prefix}${v % 10}`, x: x - digitWidth, y });
+    quads.push({ name: `${prefix}${v % 10}`, x: x - digitWidth, y, sid: SID_HUDNUM });
     x -= digitWidth;
     v = Math.floor(v / 10);
   } while (v > 0);

@@ -19,6 +19,10 @@ import { buildTextureArray, type TextureArray } from '../textures.js';
 // build never pulls in postprocess.ts or the effect library.
 const GBUFFER_FORMAT: GPUTextureFormat = 'rgba16float';
 const GBUFFER_CLEAR = { r: 0, g: 0, b: 0, a: 20000 };
+// A third G-buffer target: per-surface texture UV (see iUV0). Two channels are
+// enough, so rg16float halves the bandwidth of a full rgba target.
+const GUV_FORMAT: GPUTextureFormat = 'rg16float';
+const GUV_CLEAR = { r: 0, g: 0, b: 0, a: 0 };
 
 /** Builds the post-process filter. Injected by main-postprocess.ts so the plain
  *  entry (main.ts) tree-shakes the whole effect library out of its bundle. */
@@ -105,6 +109,7 @@ export async function createWebGPUBackend(
   let depth: GPUTexture | null = null;
   let gColor: GPUTexture | null = null;   // post-process only
   let gNd: GPUTexture | null = null;      // post-process only: normal.xyz, depth.w
+  let gUV: GPUTexture | null = null;      // post-process only: surface uv.xy
   let width = 0, height = 0;
   let gpu: LevelGpu | null = null;
   let enc: GPUCommandEncoder | null = null;
@@ -118,11 +123,12 @@ export async function createWebGPUBackend(
     depth = device.createTexture({ size: [width, height], format: 'depth24plus', usage: GPUTextureUsage.RENDER_ATTACHMENT });
     wipe.resize(width, height);
     if (postprocess) {
-      gColor?.destroy(); gNd?.destroy();
+      gColor?.destroy(); gNd?.destroy(); gUV?.destroy();
       const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
       gColor = device.createTexture({ size: [width, height], format, usage });
       gNd = device.createTexture({ size: [width, height], format: GBUFFER_FORMAT, usage });
-      postprocess.setInputs(gColor.createView(), gNd.createView());
+      gUV = device.createTexture({ size: [width, height], format: GUV_FORMAT, usage });
+      postprocess.setInputs(gColor.createView(), gNd.createView(), gUV.createView());
     }
   }
 
@@ -227,6 +233,7 @@ export async function createWebGPUBackend(
         ? [
             { view: gColor!.createView(), clearValue, loadOp: 'clear', storeOp: 'store' },
             { view: gNd!.createView(), clearValue: GBUFFER_CLEAR, loadOp: 'clear', storeOp: 'store' },
+            { view: gUV!.createView(), clearValue: GUV_CLEAR, loadOp: 'clear', storeOp: 'store' },
           ]
         : [{ view: wipe.sceneView(), clearValue, loadOp: 'clear', storeOp: 'store' }];
       rp = enc.beginRenderPass({

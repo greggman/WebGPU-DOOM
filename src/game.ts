@@ -33,6 +33,7 @@ import { FRACBITS, FRACUNIT } from './m_fixed.js';
 import { BT_ATTACK, BT_USE } from './p_user.js';
 import { sprNames, states, mobjInfo } from './info.js';
 import { SPRITE_FLOATS, type Renderer } from './renderer.js';
+import { SID_ENEMY, SID_POWERUP, SID_EFFECT, SID_WEAPON } from './spriteid.js';
 
 declare let Stats: any;
 const stats = new Stats();
@@ -539,8 +540,10 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
         instances[o + 1] = mo.z / FRACUNIT;
         instances[o + 2] = mapYToWorldZ(mo.y / FRACUNIT);
         instances[o + 3] = layer;
-        // flip field: bit 0 = mirrored, bit 1 = MF_SHADOW (spectre fuzz).
-        instances[o + 4] = (sf.flip[rot] ? 1 : 0) | ((mo.flags & MF.MF_SHADOW) ? 2 : 0);
+        // flip field: bit 0 = mirrored, bit 1 = MF_SHADOW (spectre fuzz), bits
+        // 2-4 = G-buffer category (SID_*) for post-process recolouring.
+        const sid = mo.flags & MF.MF_COUNTKILL ? SID_ENEMY : mo.flags & MF.MF_SPECIAL ? SID_POWERUP : SID_EFFECT;
+        instances[o + 4] = (sf.flip[rot] ? 1 : 0) | ((mo.flags & MF.MF_SHADOW) ? 2 : 0) | (sid << 2);
         instances[o + 5] = st.fullbright ? -1 : Math.max(0, Math.min(15, (mo.sector?.lightLevel ?? 255) >> 4));
         n++;
         mo = mo.snext;
@@ -765,7 +768,7 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
         for (const which of [ps_weapon, ps_flash]) {
           const psp = player.psprites[which];
           const lump = pspriteLump(psp.state);
-          if (lump) overlay.push({ name: lump, x: psp.sx / FRACUNIT, y: psp.sy / FRACUNIT });
+          if (lump) overlay.push({ name: lump, x: psp.sx / FRACUNIT, y: psp.sy / FRACUNIT, sid: SID_WEAPON });
         }
         renderer.drawHud(overlay, paletteRow(player));
       }

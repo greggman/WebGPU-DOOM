@@ -28,6 +28,7 @@ uniform float iFrame;
 uniform vec4 iMouse;
 uniform sampler2D iChannel0;    // scene colour
 uniform sampler2D iChannelND;   // normal.xyz + linear depth.w
+uniform sampler2D iChannelUV;   // per-surface texture uv.xy
 uniform vec3 iCamPos;
 uniform vec3 iCamRight;
 uniform vec3 iCamUp;
@@ -46,7 +47,15 @@ vec3 iNormal0(vec2 uv){ return texture(iChannelND, uv).xyz; }
 // 1 on billboard sprites (enemies, items), 0 on world geometry. Sprite normals
 // are stored at length 2, world normals at length 1; iNormal0 callers normalize.
 float iSprite(vec2 uv){ return step(1.5, length(texture(iChannelND, uv).xyz)); }
+// Category of the surface at uv, recovered from the normal magnitude (see
+// src/spriteid.ts): 1 = world, 2 = enemy, 3 = powerup, 4 = effect, 5 = HUD,
+// 6 = HUD number, 7 = the player's weapon.
+float iSpriteId(vec2 uv){ return floor(length(texture(iChannelND, uv).xyz) + 0.5); }
 float iDepth0(vec2 uv){ return texture(iChannelND, uv).w; }    // map units
+// Per-surface texture UV of the pixel at uv. Sprites/HUD read 0..1 across the
+// patch; world walls/floors read 0..1 within a tile (wrapped). Sky reads its
+// panorama u/v. Handy for aligning effects to a surface instead of the screen.
+vec2 iUV0(vec2 uv){ return texture(iChannelUV, uv).xy; }
 float iDepth01(vec2 uv){ return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }   // 0 = eye, 1 = far clip
 // World-space position of the surface at uv, reconstructed from linear depth +
 // the camera basis (Y up). Meaningless on sky (no geometry) or UI (depth ~0).
@@ -71,6 +80,7 @@ interface Locs {
   iMouse: WebGLUniformLocation | null;
   iChannel0: WebGLUniformLocation | null;
   iChannelND: WebGLUniformLocation | null;
+  iChannelUV: WebGLUniformLocation | null;
   iChannels: WebGLUniformLocation | null;
   iCamPos: WebGLUniformLocation | null;
   iCamRight: WebGLUniformLocation | null;
@@ -81,7 +91,7 @@ interface Locs {
 }
 
 export interface WebGL2PostProcess extends PostProcessControl {
-  setInputs(colorTex: WebGLTexture, ndTex: WebGLTexture): void;
+  setInputs(colorTex: WebGLTexture, ndTex: WebGLTexture, uvTex: WebGLTexture): void;
   render(targetFbo: WebGLFramebuffer | null, width: number, height: number, dtMs: number): void;
 }
 
@@ -174,6 +184,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
       iMouse: gl.getUniformLocation(prog, 'iMouse'),
       iChannel0: gl.getUniformLocation(prog, 'iChannel0'),
       iChannelND: gl.getUniformLocation(prog, 'iChannelND'),
+      iChannelUV: gl.getUniformLocation(prog, 'iChannelUV'),
       iChannels: gl.getUniformLocation(prog, 'iChannels'),
       iCamPos: gl.getUniformLocation(prog, 'iCamPos'),
       iCamRight: gl.getUniformLocation(prog, 'iCamRight'),
@@ -207,6 +218,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
 
   let colorTex: WebGLTexture | null = null;
   let ndTex: WebGLTexture | null = null;
+  let uvTex: WebGLTexture | null = null;
   let curName = usable[0].name;
   let cur = get(curName);
   let time = 0, frame = 0;
@@ -263,7 +275,7 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
         ...p.channels.filter((c) => c.error).map((c) => ({ line: c.spec.line, col: 1, message: c.error!, kind: 'resource' as const })),
       ];
     },
-    setInputs(c, nd): void { colorTex = c; ndTex = nd; },
+    setInputs(c, nd, uv): void { colorTex = c; ndTex = nd; uvTex = uv; },
     render(targetFbo, width, height, dtMs): void {
       time += dtMs / 1000;
       frame += 1;
@@ -284,9 +296,10 @@ export function createWebGL2PostProcess(gl: WebGL2RenderingContext): WebGL2PostP
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colorTex); gl.uniform1i(cur.loc.iChannel0, 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ndTex); gl.uniform1i(cur.loc.iChannelND, 1);
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D_ARRAY, libTex); gl.uniform1i(cur.loc.iChannels, 2);
-      // User channels (iChannel1..N) on units 3+; placeholder until loaded.
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, uvTex); gl.uniform1i(cur.loc.iChannelUV, 3);
+      // User channels (iChannel1..N) on units 4+; placeholder until loaded.
       cur.channels.forEach((c, i) => {
-        const unit = 3 + i, target = gl[CHANNEL_TYPES[c.spec.kind].glTarget];
+        const unit = 4 + i, target = gl[CHANNEL_TYPES[c.spec.kind].glTarget];
         gl.activeTexture(gl.TEXTURE0 + unit);
         gl.bindTexture(target, c.tex ?? placeholder[c.spec.kind]);
         gl.uniform1i(c.loc, unit);

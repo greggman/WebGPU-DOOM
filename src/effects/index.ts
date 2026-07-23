@@ -3,7 +3,7 @@
 // collection (WGSL now; GLSL kept for the WebGL2 backend).
 
 import type { PostEffect } from './effect.js';
-import { passthrough, showNormals, showDepth, outline, dof, sketch } from './gbuffer.js';
+import { passthrough, showNormals, showDepth, showUVs, outline, dof, sketch } from './gbuffer.js';
 import { blueprint, crt, vhs, halftone, grayscale, posterize, pixelate } from './claude.js';
 import { mattiasCRT } from './mattias-crt.js';
 import { distortedTV } from './distorted-tv.js';
@@ -16,6 +16,7 @@ import { cmykHalftone } from './cmyk-halftone.js';
 import { matrix } from './matrix.js';
 import { crosshatch } from './crosshatch.js';
 import { chtest } from './chtest.js';
+import { spriteId } from './spriteid.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -23,6 +24,7 @@ export const EFFECTS: PostEffect[] = [
   passthrough,
   showNormals,
   showDepth,
+  showUVs,
   outline,
   dof,
   sketch,
@@ -43,5 +45,6 @@ export const EFFECTS: PostEffect[] = [
   cmykHalftone,
   matrix,
   crosshatch,
+  spriteId,
   chtest,
 ];

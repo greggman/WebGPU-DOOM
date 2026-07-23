@@ -21,6 +21,7 @@ import type { Texture } from '../textures.js';
 import type { LevelGeometry } from '../level.js';
 import type { Renderer } from '../renderer.js';
 import type { Quad } from '../hud2d.js';
+import { SID_HUD } from '../spriteid.js';
 
 // ---- shaders --------------------------------------------------------------
 
@@ -28,7 +29,7 @@ import type { Quad } from '../hud2d.js';
 // for the post-process G-buffer, exactly like the WebGPU passes. `gb` off yields
 // the original single-output shaders so the plain page is unchanged.
 const gbDecl = (gb: boolean): string =>
-  gb ? 'layout(location=0) out vec4 fragColor; layout(location=1) out vec4 o_nd;' : 'out vec4 fragColor;';
+  gb ? 'layout(location=0) out vec4 fragColor; layout(location=1) out vec4 o_nd; layout(location=2) out vec2 o_uv;' : 'out vec4 fragColor;';
 
 const WORLD_VS = (gb: boolean): string => `#version 300 es
 layout(location=0) in vec3 a_pos; layout(location=1) in vec2 a_uv;
@@ -59,7 +60,7 @@ void main(){
     row=int(clamp((15.0-li)*4.0 + clamp(v_depth*(12.0/1024.0),0.0,12.0) - 12.0 - u_extralight*8.0,0.0,31.0)); }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
-  ${gb ? 'o_nd = vec4(nrm, v_depth);' : ''}
+  ${gb ? 'o_nd = vec4(nrm, v_depth); o_uv = fract(v_uv);' : ''}
 }`;
 
 const SKY_VS = `#version 300 es
@@ -78,7 +79,7 @@ void main(){
   float vv=clamp((100.0-dir.y*128.0)/128.0,0.0,1.0);
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(vec2(uu,vv)*sz),u_skyLayer),0).rg;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),0),0).rgb,1.0);
-  ${gb ? 'o_nd = vec4(0.0, 0.0, 0.0, 20000.0);' : ''}
+  ${gb ? 'o_nd = vec4(0.0, 0.0, 0.0, 20000.0); o_uv = vec2(uu, vv);' : ''}
 }`;
 
 const SPRITE_VS = (gb: boolean): string => `#version 300 es
@@ -102,7 +103,7 @@ void main(){
   vec3 world=vec3(a_pos.x,0.0,a_pos.z)+u_camRight*x+vec3(0.0,y,0.0);
   vec4 c=u_mvp*vec4(world,1.0); gl_Position=c;
   v_uv=uv; v_light=a_light; v_depth=c.w; v_layer=int(a_layer); v_shadow=(flags>>1)&1;
-  ${gb ? 'v_nrm=2.0*normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}  // length 2 flags sprites (iSprite)
+  ${gb ? 'float sid=max(float((flags>>2)&7),2.0); v_nrm=sid*normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}  // length = category (>=2) flags sprites (iSprite/iSpriteId)
 }`;
 
 const SPRITE_FS = (gb: boolean): string => `#version 300 es
@@ -126,35 +127,37 @@ void main(){
     vec3 rgb=texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb;
     ivec2 p=ivec2(gl_FragCoord.xy);
     float shimmer=((p.x+p.y)&1)==0?0.18:0.0;
-    fragColor=vec4(rgb,0.34+shimmer); ${gb ? 'o_nd=vec4(v_nrm, v_depth);' : ''} return;
+    fragColor=vec4(rgb,0.34+shimmer); ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_uv=v_uv;' : ''} return;
   }
   uint remap=texelFetch(u_colormap,ivec2(int(idx.r),row),0).r;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(remap),u_paletteRow),0).rgb,1.0);
-  ${gb ? 'o_nd=vec4(v_nrm, v_depth);' : ''}
+  ${gb ? 'o_nd=vec4(v_nrm, v_depth); o_uv=v_uv;' : ''}
 }`;
 
 const HUD_VS = `#version 300 es
 precision highp float;
 layout(location=0) in vec4 a_rect; layout(location=1) in float a_layer; layout(location=2) in float a_palRow;
-out vec2 v_uv; flat out int v_layer; flat out int v_palRow;
+out vec2 v_uv; flat out int v_layer; flat out int v_palRow; flat out int v_sid;
 void main(){
   vec2 corners[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(1,1),vec2(0,0),vec2(1,1),vec2(0,1));
   vec2 corner=corners[gl_VertexID];
   vec2 px=a_rect.xy+corner*a_rect.zw;
   gl_Position=vec4(px.x/320.0*2.0-1.0, 1.0-px.y/200.0*2.0, 0.0, 1.0);
-  v_uv=corner; v_layer=int(a_layer); v_palRow=int(a_palRow);
+  // Category (SID_*) is packed into the high 16 bits of a_layer.
+  int packed=int(a_layer);
+  v_uv=corner; v_layer=packed&0xffff; v_sid=packed>>16; v_palRow=int(a_palRow);
 }`;
 
 const HUD_FS = (gb: boolean): string => `#version 300 es
 precision highp float; precision highp int; precision highp usampler2DArray;
 uniform highp usampler2DArray u_atlas; uniform sampler2D u_sizes; uniform sampler2D u_palette;
-in vec2 v_uv; flat in int v_layer; flat in int v_palRow; ${gbDecl(gb)}
+in vec2 v_uv; flat in int v_layer; flat in int v_palRow; flat in int v_sid; ${gbDecl(gb)}
 void main(){
   vec2 size=texelFetch(u_sizes,ivec2(v_layer,0),0).xy;
   uvec2 idx=texelFetch(u_atlas,ivec3(ivec2(v_uv*size),v_layer),0).rg;
   if(idx.g==0u) discard;
   fragColor=vec4(texelFetch(u_palette,ivec2(int(idx.r),v_palRow),0).rgb,1.0);
-  ${gb ? 'o_nd=vec4(0.0,0.0,0.0,0.0);' : ''}
+  ${gb ? 'o_nd=vec4(0.0,float(v_sid),0.0,0.0); o_uv=v_uv;' : ''}
 }`;
 
 // ---- backend --------------------------------------------------------------
@@ -241,7 +244,7 @@ export function createWebGL2Backend(
 
   // Post-process G-buffer: colour + normal/depth, both sampled by the filter.
   let gFbo: WebGLFramebuffer | null = null;
-  let gColorTex: WebGLTexture | null = null, gNdTex: WebGLTexture | null = null, gDepthRb: WebGLRenderbuffer | null = null;
+  let gColorTex: WebGLTexture | null = null, gNdTex: WebGLTexture | null = null, gUvTex: WebGLTexture | null = null, gDepthRb: WebGLRenderbuffer | null = null;
 
   const emptyVao = gl.createVertexArray()!;
   const spriteVao = gl.createVertexArray()!;
@@ -268,10 +271,13 @@ export function createWebGL2Backend(
     if (postprocess) {
       if (gColorTex) gl.deleteTexture(gColorTex);
       if (gNdTex) gl.deleteTexture(gNdTex);
+      if (gUvTex) gl.deleteTexture(gUvTex);
       if (gDepthRb) gl.deleteRenderbuffer(gDepthRb);
       if (gFbo) gl.deleteFramebuffer(gFbo);
       gColorTex = makeColorTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
       gNdTex = makeColorTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
+      // Third target: per-surface uv.xy (see iUV0). RG16F is enough for two coords.
+      gUvTex = makeColorTex(gl.RG16F, gl.RG, gl.HALF_FLOAT);
       gDepthRb = gl.createRenderbuffer();
       gl.bindRenderbuffer(gl.RENDERBUFFER, gDepthRb);
       gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
@@ -279,9 +285,10 @@ export function createWebGL2Backend(
       gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gColorTex, 0);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, gNdTex, 0);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, gUvTex, 0);
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, gDepthRb);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      postprocess.setInputs(gColorTex, gNdTex);
+      postprocess.setInputs(gColorTex, gNdTex, gUvTex);
     }
   }
 
@@ -350,7 +357,7 @@ export function createWebGL2Backend(
         // the G-buffer instead of the melt target.
         wipe.capture();
         gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo);
-        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
       } else {
         wipe.beginScene(); // binds the offscreen target + snapshots the old screen
       }
@@ -358,9 +365,10 @@ export function createWebGL2Backend(
       gl.disable(gl.BLEND);
       gl.depthMask(true);
       if (postprocess) {
-        // Colour: magenta/black; normal/depth: zero normal, far depth.
+        // Colour: magenta/black; normal/depth: zero normal, far depth; uv: zero.
         gl.clearBufferfv(gl.COLOR, 0, [clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1]);
         gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 20000]);
+        gl.clearBufferfv(gl.COLOR, 2, [0, 0, 0, 0]);
         gl.clearBufferfv(gl.DEPTH, 0, [1]);
       } else {
         gl.clearColor(clearMagenta ? 1 : 0, 0, clearMagenta ? 1 : 0, 1);
@@ -403,9 +411,10 @@ export function createWebGL2Backend(
       gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
       if (drawBuffersIndexed) {
         // Blend the colour target (0) for spectre-fuzz translucency; leave the
-        // normal/depth target (1) unblended so its depth stays intact.
+        // normal/depth (1) and uv (2) targets unblended so their data stays intact.
         drawBuffersIndexed.enableiOES(gl.BLEND, 0);
         drawBuffersIndexed.disableiOES(gl.BLEND, 1);
+        drawBuffersIndexed.disableiOES(gl.BLEND, 2);
         gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       } else if (gb) {
         // No per-buffer blend: keep depth/normal correct by drawing opaque (fuzz
@@ -435,7 +444,8 @@ export function createWebGL2Backend(
         if (layer === undefined || !img) continue;
         const o = n * 6;
         data[o] = q.x - img.leftOffset; data[o + 1] = q.y - img.topOffset; data[o + 2] = img.width; data[o + 3] = img.height;
-        data[o + 4] = layer; data[o + 5] = paletteRow; n++;
+        // Category in the high 16 bits; layer index in the low 16.
+        data[o + 4] = layer | ((q.sid ?? SID_HUD) << 16); data[o + 5] = paletteRow; n++;
       }
       if (n === 0) return;
       gl.bindVertexArray(hudVao); gl.bindBuffer(gl.ARRAY_BUFFER, hudVbo);

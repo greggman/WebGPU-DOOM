@@ -47,7 +47,7 @@ struct VsOut {
   ${gb ? '@location(4) worldPos : vec3f,' : ''}
 };
 
-${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, };' : ''}
+${gb ? 'struct FsOut { @location(0) color : vec4f, @location(1) nd : vec4f, @location(2) uv2 : vec2f, };' : ''}
 
 @vertex
 fn vs(in : VsIn) -> VsOut {
@@ -95,7 +95,9 @@ fn fs(in : VsOut) -> ${gb ? 'FsOut' : '@location(0) vec4f'} {
 
   let remap = textureLoad(colormap, vec2i(i32(idx.r), row), 0).r;
   let rgb = textureLoad(palette, vec2i(i32(remap), i32(g.paletteRow)), 0).rgb;
-  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(normal, in.viewDepth); return o;' : 'return vec4f(rgb, 1.0);'}
+  // uv2: surface texture coords, wrapped to 0..1 within a tile (good f16
+  // precision) so post-process effects can read a per-surface UV via iUV0.
+  ${gb ? 'var o : FsOut; o.color = vec4f(rgb, 1.0); o.nd = vec4f(normal, in.viewDepth); o.uv2 = fract(in.uv); return o;' : 'return vec4f(rgb, 1.0);'}
 }
 `;
 
@@ -141,7 +143,7 @@ export function createPass(device: GPUDevice, format: GPUTextureFormat, gbufferF
     },
     fragment: {
       module, entryPoint: 'fs',
-      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }] : [{ format }],
+      targets: gbufferFormat ? [{ format }, { format: gbufferFormat }, { format: 'rg16float' }] : [{ format }],
     },
     primitive: { topology: 'triangle-list', cullMode: 'none' },
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' },

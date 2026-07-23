@@ -14,6 +14,7 @@ import type { PostEffect } from './effect.js';
 export const crosshatch: PostEffect = {
   name: 'crosshatch',
   author: 'Claude',
+  hidden: true,
   wgsl: `
 // iChannel1:
 //   layers:

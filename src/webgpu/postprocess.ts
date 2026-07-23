@@ -31,6 +31,7 @@ struct Uniforms {
 @group(0) @binding(4) var iChannels : texture_2d_array<f32>;   // built-in noise/pattern library
 @group(0) @binding(5) var iChannelsSampler : sampler;          // repeat + mipmap
 @group(0) @binding(6) var iChannelSampler : sampler;           // repeat + mipmap, for iChannel1..N
+@group(0) @binding(7) var iChannelUV : texture_2d<f32>;        // per-surface texture uv.xy
 
 const iNoiseRGBA : i32 = 0;   // uncorrelated per-texel rgba white noise
 const iNoiseValue : i32 = 1;  // smooth grey value noise
@@ -45,7 +46,15 @@ fn iNormal0(uv: vec2f) -> vec3f { return textureSampleLevel(iChannelND, iSampler
 // are stored at length 2, world normals at length 1; callers of iNormal0
 // normalize, so this magnitude flag is free.
 fn iSprite(uv: vec2f) -> f32 { return step(1.5, length(textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz)); }
+// Category of the surface at uv, recovered from the normal magnitude (see
+// src/spriteid.ts): 1 = world, 2 = enemy, 3 = powerup, 4 = effect, 5 = HUD,
+// 6 = HUD number, 7 = the player's weapon.
+fn iSpriteId(uv: vec2f) -> f32 { return round(length(textureSampleLevel(iChannelND, iSampler, uv, 0.0).xyz)); }
 fn iDepth0(uv: vec2f) -> f32 { return textureSampleLevel(iChannelND, iSampler, uv, 0.0).w; }   // map units
+// Per-surface texture UV of the pixel at uv. Sprites/HUD read 0..1 across the
+// patch; world walls/floors read 0..1 within a tile (wrapped). Sky reads its
+// panorama u/v. Handy for aligning effects to a surface instead of the screen.
+fn iUV0(uv: vec2f) -> vec2f { return textureSampleLevel(iChannelUV, iSampler, uv, 0.0).xy; }
 fn iDepth01(uv: vec2f) -> f32 { return clamp(iDepth0(uv) / 20000.0, 0.0, 1.0); }                 // 0 = eye, 1 = far clip
 // World-space position of the surface at uv, reconstructed from linear depth +
 // the camera basis. Y is up. Meaningless where there is no geometry (sky) or on
@@ -80,13 +89,13 @@ const U_SIZE = 112; // + camera: camPos+tanX (16) + right+tanY (16) + up+pad (16
 const HEADER_LINES = HEADER.split('\n').length - 1;
 
 export interface PostProcess extends PostProcessControl {
-  setInputs(colorView: GPUTextureView, ndView: GPUTextureView): void;
+  setInputs(colorView: GPUTextureView, ndView: GPUTextureView, uvView: GPUTextureView): void;
   render(enc: GPUCommandEncoder, outView: GPUTextureView, width: number, height: number, dtMs: number): void;
 }
 
 export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): PostProcess {
   const FRAG = GPUShaderStage.FRAGMENT;
-  // Bindings 0-6 are the same for every effect; 7+ are per-effect user channels.
+  // Bindings 0-7 are the same for every effect; 8+ are per-effect user channels.
   const baseEntries: GPUBindGroupLayoutEntry[] = [
     { binding: 0, visibility: FRAG, sampler: { type: 'filtering' } },
     { binding: 1, visibility: FRAG, texture: { sampleType: 'float' } },
@@ -95,6 +104,7 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
     { binding: 4, visibility: FRAG, texture: { sampleType: 'float', viewDimension: '2d-array' } },
     { binding: 5, visibility: FRAG, sampler: { type: 'filtering' } },
     { binding: 6, visibility: FRAG, sampler: { type: 'filtering' } },
+    { binding: 7, visibility: FRAG, texture: { sampleType: 'float' } },
   ];
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
   const uniforms = device.createBuffer({ size: U_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -169,10 +179,10 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
   interface EffectGPU { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; channels: ChannelGPU[]; headerLines: number; parseErrs: { line: number; message: string }[]; }
 
   const channelDecls = (specs: ChannelSpec[]): string =>
-    specs.map((s, i) => `@group(0) @binding(${7 + i}) var iChannel${s.index}: ${CHANNEL_TYPES[s.kind].wgsl};`).join('\n');
+    specs.map((s, i) => `@group(0) @binding(${8 + i}) var iChannel${s.index}: ${CHANNEL_TYPES[s.kind].wgsl};`).join('\n');
   const makeLayout = (specs: ChannelSpec[]): GPUBindGroupLayout => device.createBindGroupLayout({
     entries: [...baseEntries, ...specs.map((s, i): GPUBindGroupLayoutEntry =>
-      ({ binding: 7 + i, visibility: FRAG, texture: { sampleType: 'float', viewDimension: CHANNEL_TYPES[s.kind].view } }))],
+      ({ binding: 8 + i, visibility: FRAG, texture: { sampleType: 'float', viewDimension: CHANNEL_TYPES[s.kind].view } }))],
   });
   const startLoads = (specs: ChannelSpec[]): ChannelGPU[] => specs.map((s) => {
     const c: ChannelGPU = { spec: s, view: null, load: Promise.resolve() };
@@ -196,6 +206,7 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
 
   let colorView: GPUTextureView | null = null;
   let ndView: GPUTextureView | null = null;
+  let uvView: GPUTextureView | null = null;
   let bind: GPUBindGroup | null = null;
   const effects = new Map<string, EffectGPU>();
   let curName = EFFECTS[0].name;
@@ -207,7 +218,7 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
   const cam = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 1]);
 
   function rebuildBind(): void {
-    if (!colorView || !ndView) return;
+    if (!colorView || !ndView || !uvView) return;
     bind = device.createBindGroup({
       layout: curEffect.layout,
       entries: [
@@ -218,7 +229,8 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
         { binding: 4, resource: libView },
         { binding: 5, resource: libSampler },
         { binding: 6, resource: libSampler },
-        ...curEffect.channels.map((c, i): GPUBindGroupEntry => ({ binding: 7 + i, resource: c.view ?? placeholder[c.spec.kind] })),
+        { binding: 7, resource: uvView },
+        ...curEffect.channels.map((c, i): GPUBindGroupEntry => ({ binding: 8 + i, resource: c.view ?? placeholder[c.spec.kind] })),
       ],
     });
   }
@@ -274,7 +286,7 @@ export function createPostProcess(device: GPUDevice, format: GPUTextureFormat): 
         ...channels.filter((c) => c.error).map((c) => ({ line: c.spec.line, col: 1, message: c.error!, kind: 'resource' as const })),
       ];
     },
-    setInputs(cv, nv): void { colorView = cv; ndView = nv; rebuildBind(); },
+    setInputs(cv, nv, uvv): void { colorView = cv; ndView = nv; uvView = uvv; rebuildBind(); },
     render(enc, outView, width, height, dtMs): void {
       time += dtMs / 1000;
       frame += 1;

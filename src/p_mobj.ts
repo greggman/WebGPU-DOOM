@@ -1,13 +1,7 @@
 // Map objects. Ported from linuxdoom-1.10/p_mobj.c.
 
 import { FixedMul, FRACUNIT } from './m_fixed.js';
-import { P_Random, pRandomCount } from './m_random.js';
-
-// Debug-only spawn log for demo-sync tooling: (type, x, y, draw#) per P_SpawnMobj.
-let spawnLog: ((type: number, x: number, y: number, draw: number) => void) | null = null;
-export function setSpawnLog(fn: ((type: number, x: number, y: number, draw: number) => void) | null): void {
-  spawnLog = fn;
-}
+import { P_Random } from './m_random.js';
 import { states, mobjInfo, MF, MT, S } from './info.js';
 import { R_PointToAngle2 } from './r_point.js';
 import { finesine, finecosine, FINEMASK, ANGLETOFINESHIFT } from './tables.js';
@@ -142,7 +136,6 @@ export function P_SpawnMobj(x: number, y: number, z: number, type: number): PMob
   // first. The draw is unconditional and its RESULT matters: it staggers when
   // each monster notices you, so they don't all wake on the same tic.
   mo.lastLook = P_Random() % MAXPLAYERS;
-  spawnLog?.(type, x, y, pRandomCount());
 
   // P_SetThingPosition links it into its sector and blockmap cell — it must
   // happen before floorz is read, because it sets mo.subSector.
@@ -297,16 +290,8 @@ export function P_ZMovement(mo: PMobj): void {
   }
 }
 
-// Debug-only: called at the top of every mobj's think, with the draw counter,
-// so the demo-sync tooling can attribute per-tic P_Random draws to a monster.
-let thinkLog: ((mo: PMobj, draw: number) => void) | null = null;
-export function setThinkLog(fn: ((mo: PMobj, draw: number) => void) | null): void {
-  thinkLog = fn;
-}
-
 /** P_MobjThinker. */
 export function P_MobjThinker(mo: PMobj): void {
-  thinkLog?.(mo, pRandomCount());
   if (mo.momx !== 0 || mo.momy !== 0) {
     P_XYMovement(mo);
     if (mo.removed) return;

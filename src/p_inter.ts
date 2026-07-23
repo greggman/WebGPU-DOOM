@@ -369,18 +369,12 @@ export function P_SetInterEnv(e: InterEnv): void {
  * `inflictor` is what did it (a bullet's shooter, a barrel); `source` is who's
  * to blame. They differ for splash damage, which is why both exist.
  */
-let dmgLog: ((t: PMobj, s: PMobj | null, dmg: number) => void) | null = null;
-export function setDamageLog(fn: ((t: PMobj, s: PMobj | null, dmg: number) => void) | null): void {
-  dmgLog = fn;
-}
-
 export function P_DamageMobj(
   target: PMobj,
   inflictor: PMobj | null,
   source: PMobj | null,
   damage: number,
 ): void {
-  dmgLog?.(target, source, damage);
   if (!(target.flags & MF.MF_SHOOTABLE)) return;
   if (target.health <= 0) return;
 

@@ -41,20 +41,11 @@ let prndIndex = 0;
 // to a byte hides how many draws actually happened; this doesn't.
 let prndCount = 0;
 
-// Debug-only: when set, every P_Random draw is logged (draw#, value). Used by
-// the demo-sync tooling to diff our draw sequence against the vanilla reference.
-let drawLog: ((n: number, v: number) => void) | null = null;
-export function setDrawLog(fn: ((n: number, v: number) => void) | null): void {
-  drawLog = fn;
-}
-
 /** Gameplay RNG. Demo-critical: every call advances the shared sequence. */
 export function P_Random(): number {
   prndIndex = (prndIndex + 1) & 0xff;
   prndCount++;
-  const v = rndtable[prndIndex];
-  drawLog?.(prndCount, v);
-  return v;
+  return rndtable[prndIndex];
 }
 
 /** Test/debug only: total P_Random draws since the last M_ClearRandom. */

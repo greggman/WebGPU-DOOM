@@ -45,6 +45,9 @@ export interface PostProcessControl {
   setEffect(name: string): void;
   /** Cursor for iMouse (device px, button state). */
   setMouse(x: number, y: number, down: boolean): void;
+  /** Per-frame camera, for world-position reconstruction (iWorldPos). Basis
+   *  vectors are the view matrix's rows; tanX/tanY are tan(halfFov) per axis. */
+  setCamera(pos: number[], right: number[], up: number[], fwd: number[], tanX: number, tanY: number): void;
   /** The editable shader body for an effect (its `mainImage` + helpers). */
   sourceOf(name: string): string;
   /** Compile `source` and run it live as a "custom" effect. Resolves to an empty

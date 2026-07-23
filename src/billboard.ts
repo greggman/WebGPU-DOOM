@@ -102,7 +102,9 @@ fn vs(in : VsIn) -> VsOut {
   out.shadow = (flags >> 1u) & 1u;
   // Billboard normal: horizontal, perpendicular to the sprite's world X axis
   // (cam.right). A consistent facing so show-normals/outline treat sprites sanely.
-  ${gb ? 'out.normal = normalize(cross(cam.right, vec3f(0.0, 1.0, 0.0)));' : ''}
+  // Stored at length 2 (world normals are unit) to flag sprites in the G-buffer;
+  // post-process reads it via iSprite. Callers normalize, so direction is intact.
+  ${gb ? 'out.normal = 2.0 * normalize(cross(cam.right, vec3f(0.0, 1.0, 0.0)));' : ''}
   return out;
 }
 

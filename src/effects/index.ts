@@ -13,6 +13,7 @@ import { bugInTheTV } from './bug-in-the-tv.js';
 import { ledDisplay } from './led-display.js';
 import { gameboyClassic } from './gameboy-classic.js';
 import { cmykHalftone } from './cmyk-halftone.js';
+import { matrix } from './matrix.js';
 
 export type { PostEffect } from './effect.js';
 
@@ -38,4 +39,5 @@ export const EFFECTS: PostEffect[] = [
   ledDisplay,
   gameboyClassic,
   cmykHalftone,
+  matrix,
 ];

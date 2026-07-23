@@ -721,6 +721,9 @@ export async function runGame(canvas: HTMLCanvasElement, wad: Wad, renderer: Ren
 
     const right = norm(cross(fwd, [0, 1, 0]));
     const up = cross(right, fwd);
+    // Feed the camera to the post-process pass so effects can reconstruct world
+    // position from depth (iWorldPos). tanHalfY already folds in the aspect.
+    renderer.postProcess?.setCamera(eye, right, up, fwd, Math.tan(FOV_X / 2), tanHalfY);
     const spriteCount = buildSprites(mo.x, mo.y);
 
     // Automap: build its lines from the live level. The mobj walk is lazy — only

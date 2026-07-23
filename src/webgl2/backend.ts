@@ -102,7 +102,7 @@ void main(){
   vec3 world=vec3(a_pos.x,0.0,a_pos.z)+u_camRight*x+vec3(0.0,y,0.0);
   vec4 c=u_mvp*vec4(world,1.0); gl_Position=c;
   v_uv=uv; v_light=a_light; v_depth=c.w; v_layer=int(a_layer); v_shadow=(flags>>1)&1;
-  ${gb ? 'v_nrm=normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}
+  ${gb ? 'v_nrm=2.0*normalize(cross(u_camRight, vec3(0.0,1.0,0.0)));' : ''}  // length 2 flags sprites (iSprite)
 }`;
 
 const SPRITE_FS = (gb: boolean): string => `#version 300 es
